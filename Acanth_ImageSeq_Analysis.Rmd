@@ -1,0 +1,1242 @@
+---
+title: "Paired highthrouput sequencing and imaging to illuminate acantharian abundance and life-history in the East China Sea (ECS)"
+author: "Maggi Brisbin"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    number_sections: yes
+    theme: cerulean
+    toc: yes
+    toc_depth: 5
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '5'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache=TRUE, fig.path='figures/', fig.width=8, fig.height=6.5 )
+```
+
+# Map of Sampling Stations in the East China Sea 
+
+Load package:
+```{r import, warning=FALSE}
+library(marmap)
+```
+
+Import bathymetry data from NOAA:
+```{r importbathy, cache=TRUE}
+b = getNOAA.bathy(lon1 = 115, lon2 = 140, lat1 = 35, lat2 = 20, resolution = 1)
+```
+
+Import dataframe with the latitude and longitude of sampling points (in decimal degrees):
+```{r import_locs}
+pts1 <- read.csv("~/desktop/MiraiDPI/SamplingLatLong.csv")
+pts1$Station<- as.character(pts1$Station)
+str(pts1)
+
+pts_photos <-  read.csv("~/desktop/MiraiDPI/SamplingLatLong2.csv")
+pts_photos$Station<- as.character(pts_photos$Station)
+str(pts_photos)
+```
+
+Make dataframe with map labels and their lat/long: 
+```{r location_df}
+Clon = c(127.5,131.25, 121.6, 121.03, 120.8, 126)
+Clat= c(26, 31.93, 31.1, 23, 27.2, 22)
+CLabels= c("Okinawa", "Japan", "China", "Taiwan", "East China Sea", "Philippine Sea")
+Countries = cbind.data.frame(Clon, Clat, CLabels)
+str(Countries)
+```
+
+Make plot one layer at a time: 
+```{r sample_map}
+#define plot colors
+blues <- c("lightsteelblue4", "lightsteelblue3", "lightsteelblue2", "lightsteelblue1")
+greys <- c(grey(0.6), grey(0.93), grey(0.99))
+#tiff("~/desktop/MiraiDPI/MiraiFiltersMap.tiff", height= 8, width =8, units = 'in', res=300) # uncomment to save plot to file
+plot(b, image = TRUE, land = TRUE, xlim=c(120,135), ylim=c(22, 32), lwd = 0.03, bpal = list(c(0, max(b), greys), c(min(b),0 , blues)), cex.lab=1.5, cex.axis=1.5, cex.main=1.5, cex.sub=1.5) #bathymetry colors
+plot(b, lwd = 0.8, deep = 0, shallow = 0, step = 0, add = TRUE) # highlight coastline with solid black line
+plot(b, deep=-200, shallow=-200, lwd = 0.4, drawlabels=T, add=T)  # Add -200m isobath
+plot(b, deep=-1000, shallow=-1000, lwd = 0.4, drawlabels=T, add=T)  # Add -1000m isobath
+plot(b, deep=-2000, shallow=-2000, lwd = 0.4, drawlabels=T, add=T)  # Add -2000m isobath
+plot(b, deep=-3000, shallow=-3000, lwd = 0.4, drawlabels=T, add=T)  # Add -3000m isobath
+points(pts1, pch = 21, bg = 'white', col = 'red') # Add sampling points
+points(pts_photos, pch = 19, col = 'red')  #Add points for stations with photo profiles
+text(pts1, labels=pts1$Station, adj= 1.5, cex=1.2) # Add sampling station numbers
+text(pts_photos, labels=pts_photos$Station, adj= 1.5, cex=1.2) # add photo station numbers
+text(Countries, labels=Countries$CLabels, cex= 1.7, adj = -0.2) # Add map labels 
+#dev.off() #uncomment to save plot to file
+```
+
+# High-throughput sequence analysis
+
+## Identify and Count Amplicon Sequence Variants (ASVs) 
+**Sample collection, DNA extraction, PCR, & sequencing**
+
+Seawater collected from the Subsurface Chlorophyll Maximum (SCM), mid-water column, and near-bottom was collected in 10 L Niskin bottles at each sampling station and surface seawater was collected by bucket. Five Liter replicates from SCM, mid, and near-bottom water samples and 4.5 L replicates from surface samples were sequentially filtered through 10.0 and 0.2 µm pore-size Polytetrafluoroethylene (PTFE) filters. Filters were flash frozen in liquid nitrogen and stored at -80 ºC until DNA extraction. DNA was extracted following the manufacturers protocols for the Qiagen/MoBio DNeasy PowerWater Kit, including the optional heating step to lyse cells. Amplicon PCR and sequencing library preparation followed the procedures described in the Illumina 16S Metagenomic Sequencing Library Preparation manual modified only to include universal eukaryotic primers for the v4 region of the 18S rRNA gene (F: Stoeck et al. 2010, R: Brisbin et al. 2018) and amplicon PCR conditions most appropriate for these primers. The 220 samples were radomly assigned to 4 sequencing runs on the Illumina MiSeq sequencing platform with v3 chemistry for 300x300-bp paired-end sequencing. 
+
+
+Sequences are available from the NCBI Sequencing Read Archive (SRA) with accession PRJNA546472.
+
+**Bioinformatic processing with Qiime2**
+
+Demultiplexed paired-end sequences provided by the OIST sequencing center were imported to Qiime2 (v2018.11) software (Bolyen et al. 2018). The Divisive Amplicon Denoising Algorithm (DADA) was implemented with the DADA2 plug-in for Qiime2 for quality filtering, chimera removal, and feature table construction (Callahan et al. 2015) separately for each sequencing run before merging the four resulting feature tables. Taxonomy was assigned to Amplicon Sequence Variants (ASVs) in the feature table by training a classifier on the Protist Ribosomal Reference (PR2) database to classify ASVs (Guillo et al. 2012). The feature table and assigned taxonomy were then exported from Qiime2 for further analysis. 
+
+**Below is an example Qiime2 workflow for 1 sequencing run:**
+
+Activate an anaconda environment for qiime2:
+`source activate qiime2-2018.11`
+
+Import sequencing data (all sequences for eacg sequencing run must be in their own directory):
+`qiime tools import --type 'SampleData[PairedEndSequencesWithQuality]' --input-path ./seqs/seqrun1/ --input-format CasavaOneEightSingleLanePerSampleDirFmt --output-path run1_demux-paired-end.qza`
+
+Visualize squencing results (use these graphs to decide what length to trim sequences)
+`qiime demux summarize --i-data run1_demux-paired-end.qza --o-visualization run1_demux.qzv`
+
+Run the DADA2 algorithm: 
+`qiime dada2 denoise-paired --i-demultiplexed-seqs run1_demux-paired-end.qza --output-dir ./dd2run1 --o-representative-sequences run1_rep-seqs --p-trim-left-f 10 --p-trim-left-r 10 --p-trunc-len-f 260 --p-trunc-len-r 250 --p-n-threads 3`
+
+Check results:
+`qiime feature-table summarize --i-table ./dd2run1/table.qza --o-visualization ./dd2run1/table.qzv --m-sample-metadata-file ~/desktop/MiraiFilters/sampleMaptxt.txt `  
+
+`qiime metadata tabulate --m-input-file dd2run1/denoising_stats.qza --o-visualization dd2run1/denoising_stats.qzv`
+
+Merge feature tables from multiple sequencing runs: 
+`qiime feature-table merge --i-tables ./dd2run1/table.qza --i-tables ./dd2run2/table.qza --i-tables ./dd2run3/table.qza --i-tables ./dd2run4/table.qza --o-merged-table mergedtable.qza`
+
+`qiime feature-table merge-seqs --i-data run1_rep-seqs.qza --i-data run2_rep-seqs.qza --i-data run3_rep-seqs.qza --i-data run4_rep-seqs.qza --o-merged-data merged-rep-seqs.qza`
+
+Import taxonomy database: 
+`qiime tools import --type 'FeatureData[Sequence]' --input-path pr2_version_4.11.1_mothur.fasta --output-path pr2.qza`
+
+`qiime tools import --type 'FeatureData[Taxonomy]' --input-format HeaderlessTSVTaxonomyFormat --input-path pr2_version_4.11.1_mothur.tax -output-path pr2_tax.qza`
+
+Select v4 region from PR2 sequences: 
+`qiime feature-classifier extract-reads --i-sequences pr2.qza --p-f-primer CCAGCASCYGCGGTAATTCC --p-r-primer ACTTTCGTTCTTGATYRA --o-reads pr2_v4.qza`
+
+Train the classifier: 
+`qiime feature-classifier fit-classifier-naive-bayes --i-reference-reads pr2_v4.qza --i-reference-taxonomy pr2_tax.qza --o-classifier pr2_v4_classifier.qza`
+
+Classify: 
+`qiime feature-classifier classify-sklearn --i-classifier pr2_v4_classifier.qza --i-reads merged-rep-seqs.qza --o-classification taxonomy.qza`
+
+`qiime metadata tabulate --m-input-file taxonomy.qza --o-visualization taxonomy.qzv`
+
+Export the .tsv taxonomy file from `taxonomy.qzv` for use in following steps. 
+
+## Load data into R & prepare phyloseq objects
+
+Load packages:
+```{r load_pkgs, message=FALSE, warning=FALSE}
+library(tidyverse)
+#devtools::install_github("jbisanz/qiime2R")
+library(qiime2R)
+library('phyloseq')
+library('vegan')
+library('ggplot2')
+library(RColorBrewer)
+library(DESeq2)
+library(reshape)
+library("wesanderson")
+library("gridExtra")
+```
+
+Set default colors:
+```{r set_colors}
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+P <- brewer.pal(12, "Paired")
+S2 <- brewer.pal(8, "Set2")
+S1 <- brewer.pal(8, "Set1")
+D2 <- brewer.pal(8, "Dark2")
+colors<- c(P, S2, S1,D2)
+colors2 <- rep(colors, 6)
+
+g_legend<-function(a.gplot){
+  tmp <- ggplot_gtable(ggplot_build(a.gplot))
+  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
+  legend <- tmp$grobs[[leg]]
+  legend
+}
+```
+
+Convert Qiime2 artifacts to phyloseq objects: 
+```{r imprt_featuretable}
+phyloseq<-qza_to_phyloseq(features="~/desktop/MiraiFilters/mergedtable.qza")
+```
+
+Import sample data:
+```{r imprt_meta}
+metatable <- read.csv("~/desktop/MiraiFilters/SampleMap.csv")
+row.names(metatable) <- metatable[[1]]
+
+metatable$Station <- as.character(metatable$Station)
+metatable$filter <-as.factor(metatable$filter)
+
+META<- sample_data(metatable)
+str(META)
+```
+
+Load PR2 taxonomy:
+```{r imprt_tax}
+taxonomy <- read.csv("~/desktop/MiraiFilters/taxonomy.csv", stringsAsFactors = FALSE)
+names(taxonomy) <- c("row", "tax", "Confidence")
+row.names(taxonomy) <-taxonomy[[1]]
+taxonomy <- taxonomy[,(-1)]
+taxonomy <-  separate(taxonomy, tax, c("D0","D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10", "D11", "D12", "D13", "D14"), sep = ";", fill = "right")
+taxonomy <- taxonomy[,c(1:8)]
+taxmat <- as.matrix(taxonomy)
+TAX = tax_table(taxmat)
+str(TAX)
+```
+
+Add taxonomy to phyloseq object:
+```{r ps_tax}
+ps = merge_phyloseq(phyloseq, TAX, META)
+```
+
+**Some basic statistics:**
+```{r ASV_df}
+#make ASV dataframe
+OTUs <- data.frame(otu_table(ps))
+```
+
+Total number of ASVs in the data set:
+```{r total_ASVs}
+OTUsRS<- OTUs
+OTUsRS$RowSum <- rowSums(OTUsRS)
+OTUsRSnoZero <- OTUsRS$RowSum!=0
+sum(OTUsRSnoZero)
+```
+
+Total Number of Sequences: 
+```{r total_seqs}
+sum(OTUsRS$RowSum)
+```
+ 
+merge ASV table with taxonomy: 
+```{r ASV_tax_df}
+otusWtax <- merge(OTUs, taxonomy, by = 'row.names')
+```
+
+keep only Acantharian ASVs:
+```{r acanth_ASV_df}
+otusA <-  filter(otusWtax, D3 == "Acantharea") 
+```
+
+Number of acantharian ASVs in the data set:
+```{r total_acanth_ASVs}
+OTUsRS<- otusA[,-c(1,213:220)]
+
+OTUsRS$RowSum <- rowSums(OTUsRS)
+OTUsRSnoZero <- OTUsRS$RowSum!=0
+sum(OTUsRSnoZero)
+```
+
+Acantharian ASV Richness:
+```{r acanth_richness}
+OTUs0 <- OTUsRS!=0 #is this number not a zero? true (1) or false (0)
+csums <- colSums(OTUs0) # col sums = observed ASV richness
+csumdf <- as.data.frame(csums)
+max(csumdf$csums) #1906
+min(csumdf$csums) #49
+mean(csumdf$csums) #730
+```
+
+how acantharian seqs total:
+```{r acanth_total}
+csums <- colSums(OTUsRS) # col sums = observed ASV richness
+csumdf <- as.data.frame(csums)
+sum(csumdf$csums)
+```
+
+## Distance and Ordination 
+
+*remove mislabeled samples*
+```{r cleanup}
+mixedup <- c("F43", "F44", "F45", "F46", "F47", "F48", "F84")
+'%ni%' <- Negate('%in%')
+ps<- subset_samples(ps, SampleID %ni% mixedup)
+```
+
+```{r ra_colors}
+ap<- c("#F1B6A1", "#D4A52A", "#E3E5DB", "#A5CFCC", "#0E899F", "#A83860", "#ED91BC", "#DB5339", "#F58851", "#42465C", "#1E479A", "#F7CDA4", "#CF529C", "#11638C")
+```
+
+* compute CLR normalization, CLR = centered log-ratio, log(x/gx) where gx is the geomentric mean of vector x
+
+### Full Community
+
+```{r CLR_transform, message = FALSE, warning = FALSE}
+library("CoDaSeq")
+OTU4clr<- data.frame(t(data.frame(otu_table(ps))))
+row.names(OTU4clr) <- gsub("\\.", "", row.names(OTU4clr))
+OTUs.clr <- codaSeq.clr(OTU4clr + 0.5, samples.by.row=TRUE)
+OTU2 <- otu_table(as.matrix(OTUs.clr), taxa_are_rows = FALSE)
+metatableCLR <-metatable
+row.names(metatableCLR) <- gsub("-", "", row.names(metatableCLR))
+META2<- sample_data(metatable)
+psCLR <- phyloseq(OTU2,TAX,META2)
+```
+
+```{r AitchinsonPCoA_Full, warning = FALSE, message = FALSE }
+ordu = ordinate(psCLR, "PCoA", "euclidean")
+p_full<-plot_ordination(psCLR, ordu, color="Depth", shape="filter")+theme_bw() +scale_color_manual(values=c(ap[8], ap[12], ap[5], ap[4])) + scale_shape_discrete(labels=c( "0.2", "10.0")) +
+geom_point(size=3) +theme(text = element_text(size=16)) + ggtitle("A. Full Communities")
+p_full
+```
+
+There is clustering by sample depth: DCM, Surface, and Mid/Bottom.
+In the DCM and Surface, there is also clustering by filter type.
+
+#### PCoA by depth layer 
+
+to better observe effect of filter pore-size
+
+**Surface**
+```{r adonis_full_surface}
+physeqSurf<- subset_samples(psCLR, Depth == "Surface")
+OTUsSurf <- otu_table(physeqSurf)
+metaSurf <- metatableCLR[row.names(metatableCLR) %in% row.names(OTUsSurf),]
+adonis2(vegdist(OTUsSurf, method = "euclidean") ~ filter, data = metaSurf)
+```
+
+```{r pcoa_full_surface}
+ordu = ordinate(physeqSurf, "PCoA", "euclidean")
+pSurf_full<-plot_ordination(physeqSurf, ordu, color = "Depth",  shape="filter")+theme_bw() +scale_color_manual(values = c(ap[4]))+ geom_point(size=2) +theme(text = element_text(size=16)) +scale_shape_discrete(labels=c( "0.2", "10.0"))
+```
+
+**SCM**
+```{r adonis_full_SCM}
+physeqSCM<- subset_samples(psCLR, Depth == "SCM")
+OTUsSCM <- otu_table(physeqSCM)
+metaSCM <- metatableCLR[row.names(metatableCLR) %in% row.names(OTUsSCM),]
+adonis2(vegdist(OTUsSCM, method = "euclidean") ~ filter, data = metaSCM)
+```
+
+```{r pcoa_full_SCM}
+ordu = ordinate(physeqSCM, "PCoA", "euclidean")
+pSCM_full<-plot_ordination(physeqSCM, ordu, color = "Depth",  shape="filter")+theme_bw() +scale_color_manual(values = c(ap[5]))+ geom_point(size=2) +theme(text = element_text(size=16)) +scale_shape_discrete(labels=c( "0.2", "10.0"))
+```
+
+**Mid**
+```{r adonis_full_mid}
+physeqMid<- subset_samples(psCLR, Depth == "Mid")
+OTUsMid <- otu_table(physeqMid)
+metaMid <- metatableCLR[row.names(metatableCLR) %in% row.names(OTUsMid),]
+adonis2(vegdist(OTUsMid, method = "euclidean") ~ filter, data = metaMid)
+```
+
+```{r pcoa_full_mid}
+ordu = ordinate(physeqMid, "PCoA", "euclidean")
+pMid_full<-plot_ordination(physeqMid, ordu, color = "Depth",  shape="filter")+theme_bw() +scale_color_manual(values = c(ap[12]))+ geom_point(size=2) +theme(text = element_text(size=16)) +scale_shape_discrete(labels=c( "0.2", "10.0"))
+```
+
+**Bottom**
+```{r adonis_full_bottom}
+physeqBot<- subset_samples(psCLR, Depth == "Bottom")
+OTUsBot <- otu_table(physeqBot)
+metaBot <- metatableCLR[row.names(metatableCLR) %in% row.names(OTUsBot),]
+adonis2(vegdist(OTUsBot, method = "euclidean") ~ filter, data = metaBot)
+```
+
+```{r pcoa_full_bottom}
+ordu = ordinate(physeqBot, "PCoA", "euclidean")
+pBot_full<-plot_ordination(physeqBot, ordu, color = "Depth",  shape="filter")+theme_bw() +scale_color_manual(values = c(ap[8]))+ geom_point(size=2) +theme(text = element_text(size=16)) +scale_shape_discrete(labels=c( "0.2", "10.0"))
+```
+
+```{r pcoa_full_bydepth, warning = FALSE, message = FALSE}
+supp1<-ggarrange(pSurf_full, pSCM_full, pMid_full, pBot_full, common.legend = TRUE, legend = "none")
+supp1
+```
+
+### Acantharian Communities
+```{r CLR_acanth, message = FALSE, warning = FALSE}
+library("CoDaSeq")
+psAcan <- subset_taxa(ps, D3 =="Acantharea")
+OTU4clr<- data.frame(t(data.frame(otu_table(psAcan))))
+row.names(OTU4clr) <- gsub("\\.", "", row.names(OTU4clr))
+OTUs.clr <- codaSeq.clr(OTU4clr + 0.5, samples.by.row=TRUE)
+OTU2 <- otu_table(as.matrix(OTUs.clr), taxa_are_rows = FALSE)
+metatableCLR <-metatable
+row.names(metatableCLR) <- gsub("-", "", row.names(metatableCLR))
+META2<- sample_data(metatable)
+psCLR <- phyloseq(OTU2,TAX,META2)
+```
+
+```{r AitchinsonPCoA_Acanth, warning = FALSE, message = FALSE }
+ordu = ordinate(psCLR, "PCoA", "euclidean")
+p_Acanth<-plot_ordination(psCLR, ordu, color="Depth", shape="filter")+theme_bw() +scale_color_manual(values=c(ap[8], ap[12], ap[5], ap[4])) + scale_shape_discrete(labels=c( "0.2", "10.0")) +
+geom_point(size=3) +theme(text = element_text(size=16))  + ggtitle("B. Acantharian Communities")
+p_Acanth
+```
+
+There is clustering by sample depth: SCM, Surface, and Mid/Bottom.
+
+#### PCoA by depth layer
+
+**Surface**
+```{r adonis_acanth_surf}
+physeqSurf<- subset_samples(psCLR, Depth == "Surface")
+OTUsSurf <- otu_table(physeqSurf)
+metaSurf <- metatableCLR[row.names(metatableCLR) %in% row.names(OTUsSurf),]
+adonis2(vegdist(OTUsSurf, method = "euclidean") ~ filter, data = metaSurf)
+```
+
+```{r pcoa_acanth_surf}
+ordu = ordinate(physeqSurf, "PCoA", "euclidean")
+pSurf_As<-plot_ordination(physeqSurf, ordu, color = "Depth",  shape="filter")+theme_bw() +scale_color_manual(values = c(ap[4]))+ geom_point(size=2) +theme(text = element_text(size=16)) +scale_shape_discrete(labels=c( "0.2", "10.0"))
+```
+
+**SCM**
+```{r adonis_acanth_SCM}
+physeqSCM<- subset_samples(psCLR, Depth == "SCM")
+OTUsSCM <- otu_table(physeqSCM)
+metaSCM <- metatableCLR[row.names(metatableCLR) %in% row.names(OTUsSCM),]
+adonis2(vegdist(OTUsSCM, method = "euclidean") ~ filter, data = metaSCM)
+```
+
+```{r pcoa_Acanth_SCM}
+ordu = ordinate(physeqSCM, "PCoA", "euclidean")
+pSCM_As<-plot_ordination(physeqSCM, ordu, color = "Depth",  shape="filter")+theme_bw() +scale_color_manual(values = c(ap[5]))+ geom_point(size=2) +theme(text = element_text(size=16)) +scale_shape_discrete(labels=c( "0.2", "10.0"))
+```
+
+**Mid**
+```{r adonis_acanth_mid}
+physeqMid<- subset_samples(psCLR, Depth == "Mid")
+OTUsMid <- otu_table(physeqMid)
+metaMid <- metatableCLR[row.names(metatableCLR) %in% row.names(OTUsMid),]
+adonis2(vegdist(OTUsMid, method = "euclidean") ~ filter, data = metaMid)
+```
+
+```{r pcoa_acanth_mid}
+ordu = ordinate(physeqMid, "PCoA", "euclidean")
+pMid_As<-plot_ordination(physeqMid, ordu, color = "Depth",  shape="filter")+theme_bw() +scale_color_manual(values = c(ap[12]))+ geom_point(size=2) +theme(text = element_text(size=16)) +scale_shape_discrete(labels=c( "0.2", "10.0"))
+```
+
+**Bottom**
+```{r adonis_acanth_bottom}
+physeqBot<- subset_samples(psCLR, Depth == "Bottom")
+OTUsBot <- otu_table(physeqBot)
+metaBot <- metatableCLR[row.names(metatableCLR) %in% row.names(OTUsBot),]
+adonis2(vegdist(OTUsBot, method = "euclidean") ~ filter, data = metaBot)
+```
+
+```{r pcoa_acanth_bottom}
+ordu = ordinate(physeqBot, "PCoA", "euclidean")
+pBot_As<-plot_ordination(physeqBot, ordu, color = "Depth",  shape="filter")+theme_bw() +scale_color_manual(values = c(ap[8]))+ geom_point(size=2) +theme(text = element_text(size=16)) +scale_shape_discrete(labels=c( "0.2", "10.0"))
+```
+
+```{r pcoa_acanth_bydepth, warning = FALSE, message = FALSE}
+supp_As<-ggarrange(pSurf_As, pSCM_As, pMid_As, pBot_As, common.legend = TRUE, legend = "none")
+supp_As
+```
+
+
+```{r pcoas_AandB_full_acanth, warning = FALSE, message = FALSE}
+supp2<-ggarrange(p_full, p_Acanth, common.legend = TRUE, legend = "bottom")
+supp2
+```
+
+## Relative Abundance Plot
+
+**Merge Samples --> collapse replicates**
+
+Prepare metadata table:
+```{r prep_metatable}
+metatable <- read.csv("sampleMap.csv")
+row.names(metatable) <- metatable[[1]]
+metatable$desc <- paste(metatable$Station, metatable$Depth, metatable$filter, sep="-")
+metatable <- metatable[metatable$SampleID %ni% mixedup,]
+metatable$Depth <- as.character(metatable$Depth)
+metatable$Station <-as.character(metatable$Station)
+metatable$filter<-as.character(metatable$filter)
+metatable<- metatable[,-which(names(metatable) == "SampleID")]
+META<- sample_data(metatable)
+
+ps<- subset_samples(ps, SampleID %ni% mixedup)
+ps2<- ps
+sample_data(ps2) <- META
+```
+
+Merge:
+```{r merge_samples_ps}
+mergedps <- merge_samples(ps2, "desc")
+print(mergedps)
+```
+*number of samples reduced from 211 to 112*
+
+Fix meta table in phyloseq object: 
+```{r fix_metatable}
+meta2<-as.data.frame(sample_data(mergedps))
+split<- do.call(rbind, strsplit(row.names(meta2), "-"))
+meta2$Depth <- split[,2]
+meta2$filter<-split[,3]
+meta2$desc <- row.names(meta2)
+meta2$Station <- as.character(meta2$Station)
+meta2$Depth_f <- factor(meta2$Depth, levels=c('Surface','SCM','Mid','Bottom'))
+meta2$Station_f <- factor(meta2$Station, levels=c("11", "10", "9", "8", "3", "4", "2", "5", "12", "13", "14", "15", "17", "18"))
+META <-sample_data(meta2)
+sample_data(mergedps)<-META
+```
+
+Create phyloseq object with acantharian ASVs only:
+```{r filter_mergedtable}
+phA<-subset_taxa(mergedps, D3 =="Acantharea") 
+phAra<- transform_sample_counts(phA, function(OTU) 100* OTU/sum(OTU))
+print(phAra)
+```
+
+Relative abundance plot:
+```{r relabund_plot}
+Dj<- wes_palette("Darjeeling2")
+Cv <- wes_palette("Cavalcanti1")
+Gb<- wes_palette("GrandBudapest1")
+wpcolor<- c(Dj[2], Dj[4], Cv[2], Cv[4], Gb[2], Cv[5])
+
+taxabarplot<-plot_bar(phAra, x= "Station_f", fill = "D4", facet_grid=filter~Depth_f) + scale_y_continuous(expand = c(0, 0)) + ggtitle("") + scale_fill_manual(values=wpcolor) + theme(legend.title=element_blank()) + geom_bar(aes( fill=D4), stat="identity", position="stack") + theme(axis.text.x = element_text(angle = 90, hjust = 1)) +theme_classic() +theme(text = element_text(size=14)) +ylab("Relative Abundance (%)") + xlab ("Station")
+
+t2<-taxabarplot + theme(legend.position="bottom")
+t2
+```
+
+```{r save_relabundplot}
+#ggsave("/Users/brisbin/Desktop/MiraiDPI/Acantharea_TaxaBarPlot.pdf", width = 12, height =7)
+```
+
+The relative abundance plot shows that the two filters for each sample are similar at all four water depths. This is different than the pattern seen for the full community, where the samples clustered by filter type in the surface and SCM (and are visibly different in relative abundance plots).
+
+The surface samples are dominated by photosymbiotic acantharian sequences (Arth/Symph). 
+
+The SCM sees the addition of Acantharea-Group-II and Group VI and slightly more Chaunacanthida.
+
+Mid and Bottom samples are dominated by Group-I, but still has the others as well, including photosymbiotic clades.  
+
+## ASV ordination plots
+```{r depth_taxa_asv_ordu}
+GP.ord <- ordinate(phAra, "NMDS", "bray")
+p4 = plot_ordination(phAra, GP.ord, type="split", color="Depth", shape="filter", label="Station", title="split") 
+p4
+```
+
+When only Acantharian ASVs are included in the ordination, the separation between SCM and surface is more clear. The bottom and mid water samples also separate more than in the full communities.
+
+```{r asv_ordu_D4}
+p1 = plot_ordination(phAra, GP.ord, type="taxa", color="D4", title="taxa") +scale_color_manual(values=colors)
+p1 + facet_wrap(~D4, 3)
+```
+
+Acantharea-group-1 is the only group with a clear pattern: primarily present in deep/mid cluster and completely absent in the surface.
+
+## Station relative abundance scatter plots (for comparison with imaging results)
+
+### All Acantharians
+
+unfiltered samples - percent acantharean in each 10 um filter - plot as points by depth 
+
+```{r data_wrang_forpercentplots}
+phyloseq<-qza_to_phyloseq(features="~/desktop/MiraiFilters/mergedtable.qza")
+metatable <- read.csv("~/desktop/MiraiFilters/sampleMap.csv")
+row.names(metatable) <- metatable[[1]]
+
+metatable$Station <- as.character(metatable$Station)
+metatable$filter <- as.character(metatable$filter)
+
+META_all<- sample_data(metatable)
+
+ps = merge_phyloseq(phyloseq, TAX, META_all)
+
+ps<- subset_samples(ps, SampleID %ni% mixedup)
+
+psD3 = tax_glom(ps, "D3")
+psD3ra <- transform_sample_counts(psD3, function(OTU) 100* OTU/sum(OTU))
+psD3ra_Aonly<- subset_taxa(psD3ra, D3 =="Acantharea") 
+psD3ra_Aonly_10<-subset_samples(psD3ra_Aonly, filter == "10")
+psD3ra_Aonly_10_otus <-data.frame(t(data.frame(otu_table(psD3ra_Aonly_10))))
+names(psD3ra_Aonly_10_otus) <- c("acanth")
+metatable_percent_plot <- metatable
+row.names(metatable_percent_plot) <- gsub("-", ".", row.names(metatable_percent_plot))
+psD3ra_Aonly_10_otus_meta <- merge(psD3ra_Aonly_10_otus, metatable_percent_plot, by = "row.names")
+```
+
+```{r all_stations_percentplot}
+percent_depth <- ggplot(psD3ra_Aonly_10_otus_meta, aes(x=m, y = acanth)) + geom_point() + theme_bw() +theme(text = element_text(size=12)) + xlab("Depth (m)") +ylab("% Acantharian Reads") +ggtitle("A.") +
+  geom_smooth(method=lm, color = "#11638C")
+```
+
+```{r percent_depth_faceted}
+percent_DPIstations<- psD3ra_Aonly_10_otus_meta[psD3ra_Aonly_10_otus_meta$Station %in% c("10", "3", "15", "17"),]
+
+percent_DPIstations$Station <- factor(percent_DPIstations$Station, levels = c("10", "3", "15", "17"))
+
+stat.labs <- c("st. 10", "st. 3", "st. 15", "st. 17" )
+names(stat.labs) <- c("10", "3", "15", "17")
+
+percent_depth_all_faceted <- ggplot(percent_DPIstations, aes(x=m, y = acanth)) + geom_point() + theme_bw() +theme(text = element_text(size=12)) + xlab("Depth (m)") +ylab("% Acantharian Reads") +ggtitle("A.") +
+  geom_smooth(method=lm, color = "#11638C") + facet_grid( ~Station,labeller =  labeller(Station = stat.labs)) +ggtitle("B.")+ theme(strip.background = element_rect(colour='black', fill='white')) + theme(axis.text.x = element_text(angle = 315))
+```
+
+```{r percent_depth_plots_AB}
+ggarrange(percent_depth, percent_depth_all_faceted, nrow =2 )
+#ggsave("/Users/brisbin/Desktop/MiraiDPI/percentabundance_lms.png")
+```
+
+```{r all_stations_lm}
+depthLM <- lm(acanth ~ m, data = psD3ra_Aonly_10_otus_meta)
+summary(depthLM)
+```
+
+Percent contribution of acantharians to the full community is significantly positively correlated to depth (increased % with increased depth). 
+
+By station:
+station 10
+```{r percentLM_10}
+depthLM10 <- lm(acanth ~ m, data = psD3ra_Aonly_10_otus_meta[psD3ra_Aonly_10_otus_meta$Station == "10",])
+summary(depthLM10)
+```
+
+station 15
+```{r percentLM_15}
+depthLM15 <- lm(acanth ~ m, data = psD3ra_Aonly_10_otus_meta[psD3ra_Aonly_10_otus_meta$Station == "15",])
+summary(depthLM15)
+```
+station 17
+```{r percentLM_17}
+depthLM17 <- lm(acanth ~ m, data = psD3ra_Aonly_10_otus_meta[psD3ra_Aonly_10_otus_meta$Station == "17",])
+summary(depthLM17)
+```
+station 3
+```{r percentLM_3}
+depthLM3 <- lm(acanth ~ m, data = psD3ra_Aonly_10_otus_meta[psD3ra_Aonly_10_otus_meta$Station == "3",])
+summary(depthLM3)
+```
+
+Individual station linear model is only significant for station 17. 
+
+### Only photosymbiotic acantharian clades
+
+```{r datawrang_photosym_percentplot}
+psD4 = tax_glom(ps, "D4")
+psD4ra <- transform_sample_counts(psD4, function(OTU) 100* OTU/sum(OTU))
+psD4ra_Aonly<- subset_taxa(psD4ra, D4 %in% c("Arthracanthida-Symphyacanthida", "Chaunacanthida")) 
+psD4ra_Aonly_10<-subset_samples(psD4ra_Aonly, filter == "10")
+psD4ra_Aonly_10_otus <-data.frame(t(data.frame(otu_table(psD4ra_Aonly_10))))
+psD4ra_Aonly_10_otus$acanth <- rowSums(psD4ra_Aonly_10_otus)
+metatable_percent_plot <- metatable
+row.names(metatable_percent_plot) <- gsub("-", ".", row.names(metatable_percent_plot))
+psD4ra_Aonly_10_otus_meta <- merge(psD4ra_Aonly_10_otus, metatable_percent_plot, by = "row.names")
+```
+
+```{r percentplot_photosym_allstations}
+percent_depth <- ggplot(psD4ra_Aonly_10_otus_meta, aes(x=m, y = acanth)) + geom_point() + theme_bw() +theme(text = element_text(size=12)) + xlab("Depth (m)") +ylab("% Arthracanthida-Symphyacanthida-Chaunacanthida") +ggtitle("A.") +
+  geom_smooth(method=lm, color = Cv[5]) +theme( axis.title.y = element_text(size = 10))
+```
+
+```{r percentplot_photosym_photostations}
+percent_DPIstations<- psD4ra_Aonly_10_otus_meta[psD3ra_Aonly_10_otus_meta$Station %in% c("10", "3", "15", "17"),]
+
+percent_DPIstations$Station <- factor(percent_DPIstations$Station, levels = c("10", "3", "15", "17"))
+
+stat.labs <- c("st. 10", "st. 3", "st. 15", "st. 17" )
+names(stat.labs) <- c("10", "3", "15", "17")
+
+percent_depth_all_faceted <- ggplot(percent_DPIstations, aes(x=m, y = acanth)) + geom_point() + theme_bw() +theme(text = element_text(size=12)) + xlab("Depth (m)") +ylab("% Arthracanthida-Symphyacanthida-Chaunacanthida") +
+  geom_smooth(method=lm, color = Cv[5]) + facet_grid( ~Station,labeller =  labeller(Station = stat.labs)) +ggtitle("B.")+ theme(strip.background = element_rect(colour='black', fill='white')) + theme(axis.text.x = element_text(angle = 315), axis.title.y = element_text(size = 10))
+```
+
+```{r percent_photo_plot, warning = FALSE}
+ggarrange(percent_depth, percent_depth_all_faceted, nrow =2 )
+#ggsave("/Users/brisbin/Desktop/MiraiDPI/percentabundance_ASC_lms.png")
+```
+
+```{r lm_photosym_allstations}
+depthLM <- lm(acanth ~ m, data = psD4ra_Aonly_10_otus_meta)
+summary(depthLM)
+```
+
+Percent contribution of photosymbiotic acantharians to the full community is significantly *negatively* correlated to depth (decreased % with increased depth). 
+
+By station:
+station 10
+```{r percent_photo_LM_10}
+depthLM10 <- lm(acanth ~ m, data = psD4ra_Aonly_10_otus_meta[psD4ra_Aonly_10_otus_meta$Station == "10",])
+summary(depthLM10)
+```
+
+station 15
+```{r percent_photo_LM_15}
+depthLM15 <- lm(acanth ~ m, data = psD4ra_Aonly_10_otus_meta[psD4ra_Aonly_10_otus_meta$Station == "15",])
+summary(depthLM15)
+```
+
+station 17
+```{r percent_photo_LM_17}
+depthLM17 <- lm(acanth ~ m, data = psD4ra_Aonly_10_otus_meta[psD4ra_Aonly_10_otus_meta$Station == "17",])
+summary(depthLM17)
+```
+
+station 3
+```{r percent_photo_LM_3}
+depthLM3 <- lm(acanth ~ m, data = psD4ra_Aonly_10_otus_meta[psD4ra_Aonly_10_otus_meta$Station == "3",])
+summary(depthLM3)
+```
+
+Individual station linear model is only significant for station 10. 
+
+# High-throughput imaging analysis
+
+Acantharian ROIs and full raw images are archived on Zenodo (doi: 10.5281/zenodo.3605400).
+
+Load additional packages:
+```{r load_more_packages, warning=FALSE}
+library(readr)
+library(reshape2)
+library("plyr", lib.loc="/Library/Frameworks/R.framework/Versions/3.4/Resources/library")
+```
+
+## Acantharian abundance by depth
+
+**Station 17**
+Load and format CTD data:
+```{r st17ctd_load}
+ctd17 <- read.csv("~/Desktop/MiraiDPI/DPI_CTD_data/6KCDT0006/CTD/6KCDT0006_CTD_data_1sec_int.csv")
+ctd17 <- ctd17[,1:4]
+names(ctd17) <- c("Time", "Temp", "Salinity", "Depth")
+ctd17$Depth <- ctd17$Depth * -1
+ctd17$station <- 17
+ctd17$Time <- gsub(":", "", ctd17$Time)
+ctd17$Time2 <- paste0('201706090', ctd17$Time)
+st17aCTD <- ctd17[,c(4,6)]
+names(st17aCTD)<-c("Depth","photos")
+str(st17aCTD)
+```
+
+Load and format image data: 
+```{r st17_roi_load}
+st17as<- read.table("~/Desktop/MiraiDPI/st17DPI/st17rois.txt", header = FALSE)
+names(st17as) <- c("photos")
+st17as$photos <- strtrim(st17as$photos, 14)
+st17as$photos <- as.numeric(st17as$photos)
+```
+
+Add depth from CTD data to images: 
+```{r st17_roi_depth_merge}
+st17acanth <- merge(st17aCTD,st17as, by = "photos" )
+```
+
+Calculate the sampling volume (in order to get cells/L):
+Load names of all images from station 17 downcast:
+```{r st17_allphotos}
+st17pics<- read.table("~/desktop/MiraiDPI/st17DPI/st17ALLphotos.txt", header = TRUE)
+
+st17pics$photos <- strtrim(st17pics$photos, 14)
+st17pics$photos <- as.numeric(st17pics$photos)
+st17pics <- merge(st17aCTD,st17pics, by = "photos" )
+```
+
+Get dataframe of the number of photos by depth at 10m intervals: 
+```{r st17_allphotos_counts}
+br = seq( -800, 0, by = 10)
+ranges = br[-1]
+freq   = hist(st17pics$Depth, breaks=br, include.lowest=TRUE, plot=FALSE)
+
+P<- data.frame(depth = ranges, photofrequency = freq$counts)
+str(P)
+```
+
+How many photos total? 
+```{r st17_totalphotos}
+sum(P$photofrequency)
+```
+
+Get same data frame for Acantharian frequency: 
+```{r st17_acanth_freq}
+br = seq( -800, 0, by = 10)
+ranges = br[-1]
+freq   = hist(st17acanth$Depth, breaks=br, include.lowest=TRUE, plot=FALSE)
+
+A<- data.frame(depth = ranges, Acanthfrequency = freq$counts)
+str(A)
+```
+
+How many acanths total? 
+```{r st17_totalacanths}
+sum(A$Acanthfrequency)
+```
+
+Divide the acantharian frequency by photo frequency and convert to cells/L. 
+
+For stations 3 and 10 the camera and led were 15.4cm apart. For stations 15 and 17, the camera and LED were 14 cm apart. 
+
+5.5 x 4.6 x 15.4 = 389.62 cubic cm = 0.38962 L at stations 3 & 10
+5.5 x 4.6 x 14 = 354.2 cubic cm = 0.3542 L at stations 15 & 17
+
+station 17 volume calculation: 
+
+```{r st17_cellspervol}
+frequencyDF17 <- merge(A, P, by = "depth")[-1,]
+frequencyDF17$conc <- frequencyDF17$Acanthfrequency / frequencyDF17$photofrequency
+frequencyDF17$perLiter <- frequencyDF17$conc / 0.3542
+frequencyDF17$Station <- "st.17"
+frequencyDF17$pos_depth <- frequencyDF17$depth * -1
+```
+
+**Station 3**
+
+Load and format CTD data:
+```{r st3_loadCTD}
+ctd3 <- read.csv("~/Desktop/MiraiDPI/DPI_CTD_data/6KCDT0003/CTD/6KCDT0003_CTD_data_1sec_int.csv")
+ctd3 <- ctd3[,1:4]
+names(ctd3) <- c("Time", "Temp", "Salinity", "Depth")
+ctd3$Depth <- ctd3$Depth * -1
+ctd3$station <- 3
+ctd3$Time <- gsub(":", "", ctd3$Time)
+ctd3$Time2 <- paste0('201705310', ctd3$Time)
+st3aCTD <- ctd3[,c(4,6)]
+names(st3aCTD)<-c("Depth","photos")
+str(st3aCTD)
+```
+
+Load and format image data:
+```{r st3_loadrois}
+st3as<- read.table("~/Desktop/MiraiDPI/st3DPI/st3rois.txt", header = FALSE)
+names(st3as) <- c("photos")
+st3as$photos <- strtrim(st3as$photos, 14)
+st3as$photos <- as.numeric(st3as$photos)
+st3acanth <- merge(st3aCTD,st3as, by = "photos" )
+```
+
+Calculate the sampling volume (in order to get cells/L):
+Load names of all images from station 3 downcast:
+```{r st3_loadallphotos}
+st3pics<- read.table("~/desktop/MiraiDPI/st3DPI/st3ALLphotos.txt", header = TRUE)
+st3pics$photos <- strtrim(st3pics$photos, 14)
+st3pics$photos <- as.numeric(st3pics$photos)
+st3pics <- merge(st3aCTD,st3pics, by = "photos" )
+st3pics <- st3pics[,-3]
+names(st3pics)<- c("photos", "Depth")
+st3pics$photos <- as.character(st3pics$photos)
+```
+
+Get data frame of image frequency by depth in 10m intervals:
+```{r st3_photofreq}
+br = seq( -1020, 0, by = 10)
+ranges = br[-1]
+freq   = hist(st3pics$Depth, breaks=br, include.lowest=TRUE, plot=FALSE)
+
+P3<- data.frame(depth = ranges, photofrequency = freq$counts)
+str(P3)
+```
+
+How many photos total? 
+```{r st3_photototal}
+sum(P3$photofrequency)
+```
+
+Get same data frame for Acantharian frequency:  
+```{r at3_acanthfreq}
+br = seq( -1020, 0, by = 10)
+ranges = br[-1]
+freq   = hist(st3acanth$Depth, breaks=br, include.lowest=TRUE, plot=FALSE)
+
+A3<- data.frame(depth = ranges, Acanthfrequency = freq$counts)
+str(A3)
+```
+How many acanths total? 
+```{r st3_totalacanths}
+sum(A3$Acanthfrequency)
+```
+
+Divide the acantharian frequency by photo frequency and convert to cells/L. And, plot cells/L by depth:
+```{r st3_cellspervolume, warning=FALSE}
+frequencyDF3 <- merge(A3, P3, by = "depth")[-1,]
+frequencyDF3$conc <- frequencyDF3$Acanthfrequency / frequencyDF3$photofrequency
+frequencyDF3$perLiter <- frequencyDF3$conc / 0.38962
+frequencyDF3$pos_depth <- frequencyDF3$depth * -1
+frequencyDF3$Station <- "st.3"
+```
+
+**Station 10**
+Load and format CTD data:
+```{r st10_loadCTD}
+ctd10 <- read.csv("~/Desktop/MiraiDPI/DPI_CTD_data/6KCDT0004/CTD/6KCDT0004_CTD_data_1sec_int.csv")
+ctd10 <- ctd10[,1:4]
+names(ctd10) <- c("Time", "Temp", "Salinity", "Depth")
+ctd10$Depth <- ctd10$Depth * -1
+ctd10$station <- 10
+ctd10$Time <- gsub(":", "", ctd10$Time)
+ctd10$Time2 <- paste0('201706020', ctd10$Time)
+st10aCTD <- ctd10[,c(4,6)]
+names(st10aCTD)<-c("Depth","photos")
+```
+
+Load and format image data:
+```{r st10_loadrois}
+st10aNames<- c("photos")
+st10as<- read.table("~/Desktop/MiraiDPI/st10DPI/st10rois.txt", col.names = st10aNames)
+st10as$photos <- strtrim(st10as$photos, 14)
+st10acanth <- merge(st10aCTD,st10as, by = "photos" )
+```
+
+Calculate the sampling volume (in order to get cells/L):
+Load names of all images from station 3 downcast:
+```{r st10_loadallphotos}
+st10pics<- read.table("~/desktop/MiraiDPI/st10DPI/st10ALLphotos.txt", col.names = st10aNames)
+st10pics$photos <- strtrim(st10pics$photos, 14)
+st10pics$photos <- as.numeric(st10pics$photos)
+st10pics <- merge(st10aCTD,st10pics, by = "photos" )
+st10pics <- st10pics[,-3]
+names(st10pics)<- c("photos", "Depth")
+st10pics$photos <- as.character(st10pics$photos)
+```
+
+Get data frame of image frequency by depth in 10m intervals:
+```{r st10_photofreq}
+br = seq( -1020, 0, by = 10)
+ranges = br[-1]
+freq   = hist(st10pics$Depth, breaks=br, include.lowest=TRUE, plot=FALSE)
+
+P10<- data.frame(depth = ranges, photofrequency = freq$counts)
+str(P10)
+```
+
+How many photos total? 
+```{r st10_photototal}
+sum(P10$photofrequency)
+```
+
+Get same data frame for Acantharian frequency:  
+```{r st10_acanthfreq}
+br = seq( -1020, 0, by = 10)
+ranges = br[-1]
+freq   = hist(st10acanth$Depth, breaks=br, include.lowest=TRUE, plot=FALSE)
+
+A10<- data.frame(depth = ranges, Acanthfrequency = freq$counts)
+str(A10)
+```
+```{r st10_acanthtotal}
+sum(A10$Acanthfrequency)
+```
+
+
+Divide the acantharian frequency by photo frequency and convert to cells/L. And, plot cells/L by depth:
+```{r st10_conc, warning=FALSE}
+frequencyDF10 <- merge(A10, P10, by = "depth")[-1,]
+frequencyDF10$conc <- frequencyDF10$Acanthfrequency / frequencyDF10$photofrequency
+frequencyDF10$perLiter <- frequencyDF10$conc / 0.38962
+frequencyDF10$Station <- "st.10"
+frequencyDF10$pos_depth <- frequencyDF10$depth * -1
+```
+
+**Station 15**
+
+Load and format CTD data:
+```{r st15_loadCTD}
+ctd15 <- read.csv("~/Desktop/MiraiDPI/DPI_CTD_data/6KCDT0005/CTD/6KCDT0005_CTD_data_1sec_int.csv")
+ctd15 <- ctd15[,1:4]
+names(ctd15) <- c("Time", "Temp", "Salinity", "Depth")
+ctd15$Depth <- ctd15$Depth * -1
+ctd15$station <- 10
+ctd15$Time <- gsub(":", "", ctd15$Time)
+
+ctd15$Time2 <- paste0('20170606', ctd15$Time)
+st15aCTD <- ctd15[,c(4,6)]
+names(st15aCTD)<-c("Depth","photos")
+
+st15as<- read.table("~/Desktop/MiraiDPI/st15DPI/st15rois.txt", col.names = st10aNames)
+st15as$photos <- strtrim(st15as$photos, 14)
+
+st15acanth <- merge(st15aCTD,st15as, by = "photos" )
+```
+
+Calculate the sampling volume (in order to get cells/L):
+Load names of all images from station 3 downcast:
+```{r st15_loadphotos}
+st15pics<- read.table("~/desktop/MiraiDPI/st15DPI/st15ALLphotos.txt", col.names = st10aNames)
+st15pics$photos <- strtrim(st15pics$photos, 14)
+st15pics$photos <- as.numeric(st15pics$photos)
+st15pics <- merge(st15aCTD,st15pics, by = "photos" )
+st15pics <- st15pics[,-3]
+names(st15pics)<- c("photos", "Depth")
+st15pics$photos <- as.character(st15pics$photos)
+```
+
+Get data frame of image frequency by depth in 10m intervals:
+```{r st15_photofreq}
+br = seq( -780, 0, by = 10)
+ranges = br[-1]
+freq   = hist(st15pics$Depth, breaks=br, include.lowest=TRUE, plot=FALSE)
+
+P15<- data.frame(depth = ranges, photofrequency = freq$counts)
+str(P15)
+```
+
+How many photos total? 
+```{r st15_photototal}
+sum(P15$photofrequency)
+```
+
+Get same data frame for Acantharian frequency:  
+```{r st15_acanthfreq}
+br = seq( -780, 0, by = 10)
+ranges = br[-1]
+freq   = hist(st15acanth$Depth, breaks=br, include.lowest=TRUE, plot=FALSE)
+
+A15<- data.frame(depth = ranges, Acanthfrequency = freq$counts)
+str(A15)
+```
+
+```{r st15_acanthtotal}
+sum(A15$Acanthfrequency)
+```
+
+Divide the acantharian frequency by photo frequency and convert to cells/L. And, plot cells/L by depth:
+```{r st15_conc, warning=FALSE}
+frequencyDF15 <- merge(A15, P15, by = "depth")[-1,]
+frequencyDF15$conc <- frequencyDF15$Acanthfrequency / frequencyDF15$photofrequency
+frequencyDF15$perLiter <- frequencyDF15$conc / 0.3542
+frequencyDF15$pos_depth <- frequencyDF15$depth * -1
+frequencyDF15$Station <- "st.15"
+```
+
+
+rbind and plot:
+```{r plot_depth_by_conc, warning=FALSE}
+frequencyDF_all<- rbind(frequencyDF10, frequencyDF15, frequencyDF17, frequencyDF3)
+
+frequencyDF_all$Station <- factor(frequencyDF_all$Station, levels = c("st.10", "st.3", "st.15", "st.17"))
+
+conc_depth_all <- ggplot(frequencyDF_all, aes(x=pos_depth, y = perLiter)) + geom_point() + theme_bw() +theme(text = element_text(size=12)) + xlab("Depth (m)") +ylab("Acantharian cells per Liter") +ggtitle("A.") + geom_smooth(method=lm, formula= (log(y+1) ~ log(x+1)), color = "#0E899F")
+
+conc_depth_all_faceted <- conc_depth_all + facet_grid(~Station) +ggtitle("B.") + theme(strip.background = element_rect(colour='black', fill='white'))
+
+ggarrange(conc_depth_all, conc_depth_all_faceted, nrow =2 )
+#ggsave("~/desktop/MiraiDPI/conc_by_depth.png")
+```
+
+
+maximum concentration and depth at each station:
+```{r max_concs}
+frequencyDF_all %>% dplyr::select(perLiter, depth, Station) %>% group_by(Station) %>% top_n(n=1, wt = perLiter) %>% arrange(Station)
+```
+
+Linear model for all 4 stations:
+```{r freqLM}
+depth_conc_LM <- lm(log(perLiter+1) ~ log(pos_depth+1), data = frequencyDF_all)
+summary(depth_conc_LM)
+```
+
+station 10
+```{r freqLM_st10}
+depth_conc_LM10 <- lm(log(perLiter+1) ~ log(pos_depth+1), data = frequencyDF10) 
+summary(depth_conc_LM10)
+```
+
+station 15
+```{r freqLM_st15}
+depth_conc_LM15 <- lm(log(perLiter+1) ~ log(pos_depth+1), data = frequencyDF15)
+summary(depth_conc_LM15)
+```
+
+station 17
+```{r freqLM_st17}
+depth_conc_LM17 <- lm(log(perLiter+1) ~ log(pos_depth+1), data = frequencyDF17)
+summary(depth_conc_LM17)
+```
+
+station 3
+```{r freqLM_st3}
+depth_conc_LM3 <- lm(log(perLiter+1) ~ log(pos_depth+1), data = frequencyDF3)
+summary(depth_conc_LM3)
+```
+
+## correlation between image conc and sequence % abundance
+
+```{r freqbylayer_surf}
+frequencyDF_surf <- frequencyDF_all%>% group_by(Station) %>% dplyr::select(pos_depth, perLiter) %>% filter(pos_depth < 50) %>% filter(!is.na(perLiter)) %>% summarize(Conc= mean(perLiter))
+frequencyDF_surf$Depth<- "Surface"
+```
+
+```{r freqbylayer_SCM}
+frequencyDF_SCM <- frequencyDF_all%>% group_by(Station) %>% dplyr::select(pos_depth, perLiter) %>% filter(pos_depth > 50 & pos_depth < 150) %>% filter(!is.na(perLiter)) %>% summarize(Conc= mean(perLiter))
+frequencyDF_SCM$Depth <-"SCM"
+```
+
+```{r freqbylayer_mid}
+frequencyDF_Mid <- frequencyDF_all%>% group_by(Station) %>% dplyr::select(pos_depth, perLiter) %>% filter(pos_depth > 150 & pos_depth < 700) %>% filter(!is.na(perLiter)) %>% summarize(Conc= mean(perLiter))
+frequencyDF_Mid$Depth <- "Mid"
+```
+
+```{r freqbylayer_bottom}
+frequencyDF_Bot<- frequencyDF_all%>% group_by(Station) %>% dplyr::select(pos_depth, perLiter) %>% filter(pos_depth > 700) %>% filter(!is.na(perLiter)) %>% summarize(Conc= mean(perLiter))
+frequencyDF_Bot$Depth <- "Bottom"
+```
+
+```{r freqbylayer_rbind}
+frequencyBYlayer<-rbind(frequencyDF_surf, frequencyDF_SCM, frequencyDF_Mid, frequencyDF_Bot)
+```
+
+
+`mergedps` merged replicates so there is one sample per combination of variables
+```{r get_seq_vals}
+psD4 = tax_glom(mergedps, "D4")
+psD4ra <- transform_sample_counts(psD4, function(OTU) 100* OTU/sum(OTU))
+psD4ra_Aonly<- subset_taxa(psD4ra, D4 %in% c("Arthracanthida-Symphyacanthida", "Chaunacanthida")) 
+psD4ra_Aonly_10<-subset_samples(psD4ra_Aonly, filter == "10")
+psD4ra_Aonly_10_otus <-data.frame(otu_table(psD4ra_Aonly_10))
+psD4ra_Aonly_10_otus$acanth <- rowSums(psD4ra_Aonly_10_otus)
+
+
+metatable <- read.csv("sampleMap.csv")
+row.names(metatable) <- metatable[[1]]
+metatable$desc <- paste(metatable$Station, metatable$Depth, metatable$filter, sep="-")
+metatable <- metatable[metatable$SampleID %ni% mixedup,]
+metatable$Depth <- as.character(metatable$Depth)
+metatable$Station <-as.character(metatable$Station)
+metatable$filter<-as.character(metatable$filter)
+metatable<- metatable[,-which(names(metatable) == "SampleID")]
+
+
+metatable_percent_plot <- metatable %>% distinct(desc, .keep_all = TRUE) %>% filter(filter== "10")
+
+row.names(metatable_percent_plot) <- metatable_percent_plot$desc
+psD4ra_Aonly_10_otus_meta <- merge(psD4ra_Aonly_10_otus, metatable_percent_plot, by = "row.names")
+
+DPIstations <- psD4ra_Aonly_10_otus_meta %>% dplyr::select(acanth, Station, Depth)
+
+DPIstations$Station <- paste0('st.', DPIstations$Station)
+
+final <- merge(DPIstations, frequencyBYlayer)
+```
+
+plot count by percent
+```{r plot_count_by_percent}
+countBYperc <- ggplot(final, aes(x=Conc, y = acanth)) + geom_point() + theme_bw() +theme(text = element_text(size=12)) + xlab("cells per L") +ylab("% Arthracanthida-Symphyacanthida-Chaunacanthida") +
+  geom_smooth(method=lm, color = Cv[5]) +theme( axis.title.y = element_text(size = 10))
+countBYperc
+```
+
+```{r countbypercent_LM}
+cBYp <- lm(acanth ~ Conc, data = final)
+summary(cBYp)
+```
+
+```{r countbypercent_nooutliers}
+final2 <- final %>% filter(Conc < 2 & acanth < 5) 
+
+countBYperc2 <- ggplot(final2, aes(x=Conc, y = acanth)) + geom_point() + theme_bw() +theme(text = element_text(size=12)) + xlab("cells per L") +ylab("% Arthracanthida-Symphyacanthida-Chaunacanthida") +
+  geom_smooth(method=lm, color = Cv[5]) +theme( axis.title.y = element_text(size = 10))
+countBYperc2
+#ggsave("countbypercent_noO.png", width = 4, height = 4)
+```
+
+```{r count_by_percent_noO_LM}
+cBYp2 <- lm(acanth ~ Conc, data = final2)
+summary(cBYp2)
+```
+
+## Acantharian cell size distribution by depth 
+cropped all acantharian photos to touch the edges of the acantharian spines.
+Then got image size in pixels with: `file ./* > imagesize.csv`
+
+entire image is 2448 x 2050 pixels
+5.5 cm accross (55,000 µm)
+55,000 / 2448 = 22.5
+
+
+**Station 17**
+Load and format data: 
+```{r st17_imagesize}
+imagesize17 <- read.csv("~/Desktop/MiraiDPI/st17DPI/st17imagesize.csv", header = FALSE)
+imagesize17$V1 <- substring(imagesize17$V1, 3, 16)
+split<- do.call(rbind, strsplit(as.character(imagesize17$V2), " "))
+imagesize17$height <- as.numeric(split[,2])
+imagesize17$width <- as.numeric(split[,4])
+imagesize17<- imagesize17[,c(1,5,6)]
+names(imagesize17) <- c("photos", "height", "width")
+imagesizedepth17<- merge(st17aCTD,imagesize17, by = "photos" )
+imagesizedepth17$height <- (imagesizedepth17$height * 22.5)/1000 #22.5um per pixel /1000 to convert um to mm
+imagesizedepth17$width <- (imagesizedepth17$width * 22.5)/1000 #22.5um per pixel /1000 to convert um to mm
+imagesizedepth17$size <- imagesizedepth17$height * imagesizedepth17$width
+imagesizedepth17$pos_depth <- imagesizedepth17$Depth * -1
+imagesizedepth17$Station <- "st.17"
+str(imagesizedepth17)
+```
+
+**Station 3**
+Load and format data: 
+```{r st3_imagesize}
+imagesize3 <- read.csv("~/Desktop/MiraiDPI/st3DPI/st3imagesize.csv", header = FALSE)
+imagesize3$V1 <- substring(imagesize3$V1, 3, 16)
+split<- do.call(rbind, strsplit(as.character(imagesize3$V2), " "))
+imagesize3$height <- as.numeric(split[,2])
+imagesize3$width <- as.numeric(split[,4])
+imagesize3<- imagesize3[,c(1,5,6)]
+names(imagesize3) <- c("photos", "height", "width")
+imagesizedepth3<- merge(st3aCTD,imagesize3, by = "photos" )
+imagesizedepth3$height <- (imagesizedepth3$height * 22.5)/1000 #22.5um per pixel /1000 to convert um to mm
+imagesizedepth3$width <- (imagesizedepth3$width * 22.5)/1000 #22.5um per pixel  /1000 to convert um to mm
+imagesizedepth3$size <- imagesizedepth3$height * imagesizedepth3$width
+imagesizedepth3$pos_depth <- imagesizedepth3$Depth * -1
+imagesizedepth3$Station <- "st.3"
+str(imagesizedepth3)
+```
+
+**Station 10**
+Load and format data: 
+```{r st10_imagesize}
+imagesize10 <- read.csv("~/Desktop/MiraiDPI/st10DPI/st10imagesize.csv", header = FALSE)
+imagesize10$V1 <- substring(imagesize10$V1, 3, 16)
+split<- do.call(rbind, strsplit(as.character(imagesize10$V2), " "))
+imagesize10$height <- as.numeric(split[,2])
+imagesize10$width <- as.numeric(split[,4])
+imagesize10<- imagesize10[,c(1,5,6)]
+names(imagesize10) <- c("photos", "height", "width")
+imagesizedepth10<- merge(st10aCTD,imagesize10, by = "photos" )
+imagesizedepth10$height <- (imagesizedepth10$height * 22.5)/1000 #22.5um per pixel /1000 to convert um to mm
+imagesizedepth10$width <- (imagesizedepth10$width * 22.5)/1000 #22.5um per pixel /1000 to convert um to mm
+imagesizedepth10$size <- imagesizedepth10$height * imagesizedepth10$width
+imagesizedepth10$pos_depth <- imagesizedepth10$Depth * -1
+imagesizedepth10$Station <- "st.10"
+str(imagesizedepth10)
+```
+
+**Station 15**
+Load and format data: 
+```{r st15_imagesize}
+imagesize15 <- read.csv("~/Desktop/MiraiDPI/st15DPI/st15imagesize.csv", header = FALSE)
+imagesize15$V1 <- substring(imagesize15$V1, 3, 16)
+split<- do.call(rbind, strsplit(as.character(imagesize15$V2), " "))
+imagesize15$height <- as.numeric(split[,2])
+imagesize15$width <- as.numeric(split[,4])
+imagesize15<- imagesize15[,c(1,5,6)]
+names(imagesize15) <- c("photos", "height", "width")
+imagesizedepth15<- merge(st15aCTD,imagesize15, by = "photos" )
+imagesizedepth15$height <- (imagesizedepth15$height * 22.5)/1000 #22.5um per pixel /1000 to convert um to mm
+imagesizedepth15$width <- (imagesizedepth15$width * 22.5)/1000 #22.5um per pixel /1000 to convert um to mm
+imagesizedepth15$size <- imagesizedepth15$height * imagesizedepth15$width
+imagesizedepth15$pos_depth <- imagesizedepth15$Depth * -1
+imagesizedepth15$Station <- "st.15"
+str(imagesizedepth15)
+```
+
+```{r size_depth_all}
+imagesizedepth_all <- rbind(imagesizedepth10, imagesizedepth15,imagesizedepth17, imagesizedepth3)
+imagesizedepth_all$Station <- factor(imagesizedepth_all$Station, levels = c("st.10", "st.3", "st.15", "st.17"))
+```
+
+```{r size_depth_all_plot}
+depthsize_all<- ggplot(imagesizedepth_all, aes(x=pos_depth, y = size)) + geom_point() +  theme_bw() +theme(text = element_text(size=12)) + xlab("Depth (m)") +ylab(expression(Acantharian~ROI~area~(mm^2))) 
+depthsize_all
+```
+
+```{r size_depth_facet_plot}
+depthsize_all + facet_grid(~Station) + theme(strip.background = element_rect(colour='black', fill='white'))
+```
+
+```{r savedepthbysize}
+ggsave("/Users/brisbin/Desktop/MiraiDPI/sizebydepth.png", height = 3.5, width =7)
+```
+
+
