@@ -513,6 +513,33 @@ The SCM sees the addition of Acantharea-Group-II and Group VI and slightly more 
 
 Mid and Bottom samples are dominated by Group-I, but still has the others as well, including photosymbiotic clades.  
 
+
+**Change order of clades in plot and group Acantharea_X with NA**
+
+```{r}
+a_ra <- psmelt(phAra)
+
+a_ra$D4<- as.character(a_ra$D4)
+
+a_ra$D4[is.na(a_ra$D4)] <- "Acantharea_X"
+
+wpcolor<- c(Dj[2], Dj[4], Cv[2], Cv[4], Cv[5], Gb[2])
+
+a_ra$D4<- factor(a_ra$D4, levels= c("Acantharea_X", "Acantharea-Group-I", "Acantharea-Group-II" , "Acantharea-Group-VI" , "Chaunacanthida", "Arthracanthida-Symphyacanthida" ))
+
+a_ra$Station <- factor(a_ra$Station, levels=c("11", "10", "9", "8", "3", "4", "2", "5", "12", "13", "14", "15", "17", "18"))
+
+t2<-ggplot(a_ra, aes(x=Station, y=Abundance, fill=D4, )) + geom_bar(stat = "identity") +facet_grid(filter~Depth_f)+ scale_y_continuous(expand = c(0, 0)) +theme_classic() + scale_fill_manual(values=wpcolor) +theme(text = element_text(size=14)) +ylab("Relative Abundance (%)") + xlab ("Station")
+
+t2<-t2 + theme(legend.position="bottom")
+t2
+```
+
+```{r saveNewRAplot}
+#ggsave("/Users/brisbin/Desktop/MiraiDPI/Acantharea_TaxaBarPlot.pdf", width = 11, height =6)
+```
+
+
 ## ASV ordination plots
 ```{r depth_taxa_asv_ordu}
 GP.ord <- ordinate(phAra, "NMDS", "bray")
