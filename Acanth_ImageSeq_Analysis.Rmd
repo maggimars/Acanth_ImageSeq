@@ -15,34 +15,35 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(cache=TRUE, fig.path='figures/', fig.width=8, fig.height=6.5 )
+knitr::opts_chunk$set(cache=FALSE, fig.path='figures/', fig.width=8, fig.height=6.5 )
 ```
 
-# Map of Sampling Stations in the East China Sea 
+# Map of Sampling Stations 
 
 Load package:
-```{r import, warning=FALSE}
+```
 library(marmap)
 ```
 
 Import bathymetry data from NOAA:
-```{r importbathy, cache=TRUE}
+```
 b = getNOAA.bathy(lon1 = 115, lon2 = 140, lat1 = 35, lat2 = 20, resolution = 1)
 ```
 
 Import dataframe with the latitude and longitude of sampling points (in decimal degrees):
-```{r import_locs}
+```
 pts1 <- read.csv("~/desktop/MiraiDPI/SamplingLatLong.csv")
 pts1$Station<- as.character(pts1$Station)
-str(pts1)
 
 pts_photos <-  read.csv("~/desktop/MiraiDPI/SamplingLatLong2.csv")
 pts_photos$Station<- as.character(pts_photos$Station)
-str(pts_photos)
+
+pts_acanths <-  read.csv("~/desktop/MiraiDPI/SamplingLatLong3.csv")
+pts_acanths$Station<- as.character(pts_acanths$Station)
 ```
 
 Make dataframe with map labels and their lat/long: 
-```{r location_df}
+```
 Clon = c(127.5,131.25, 121.6, 121.03, 120.8, 126)
 Clat= c(26, 31.93, 31.1, 23, 27.2, 22)
 CLabels= c("Okinawa", "Japan", "China", "Taiwan", "East China Sea", "Philippine Sea")
@@ -51,7 +52,7 @@ str(Countries)
 ```
 
 Make plot one layer at a time: 
-```{r sample_map}
+```
 #define plot colors
 blues <- c("lightsteelblue4", "lightsteelblue3", "lightsteelblue2", "lightsteelblue1")
 greys <- c(grey(0.6), grey(0.93), grey(0.99))
@@ -69,6 +70,8 @@ text(pts_photos, labels=pts_photos$Station, adj= 1.5, cex=1.2) # add photo stati
 text(Countries, labels=Countries$CLabels, cex= 1.7, adj = -0.2) # Add map labels 
 #dev.off() #uncomment to save plot to file
 ```
+![](MiraiFiltersMap.png)
+
 
 # High-throughput sequence analysis
 
@@ -141,6 +144,8 @@ library(DESeq2)
 library(reshape)
 library("wesanderson")
 library("gridExtra")
+library("ggpubr", lib.loc="~/Library/R/3.5/library")
+library(Hmisc)
 ```
 
 Set default colors:
@@ -153,6 +158,14 @@ D2 <- brewer.pal(8, "Dark2")
 colors<- c(P, S2, S1,D2)
 colors2 <- rep(colors, 6)
 
+ap<- c("#F1B6A1", "#D4A52A", "#E3E5DB", "#A5CFCC", "#0E899F", "#A83860", "#ED91BC", "#DB5339", "#F58851", "#42465C", "#1E479A", "#F7CDA4", "#CF529C", "#11638C")
+
+Dj<- wes_palette("Darjeeling2")
+Cv <- wes_palette("Cavalcanti1")
+Gb<- wes_palette("GrandBudapest1")
+wpcolor<- c(Dj[2], Dj[4], Cv[2], Cv[4], Gb[2], Cv[5])
+
+#function for drawing legends separately from plots
 g_legend<-function(a.gplot){
   tmp <- ggplot_gtable(ggplot_build(a.gplot))
   leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
@@ -244,7 +257,7 @@ min(csumdf$csums) #49
 mean(csumdf$csums) #730
 ```
 
-how acantharian seqs total:
+how many acantharian seqs total:
 ```{r acanth_total}
 csums <- colSums(OTUsRS) # col sums = observed ASV richness
 csumdf <- as.data.frame(csums)
@@ -260,13 +273,16 @@ mixedup <- c("F43", "F44", "F45", "F46", "F47", "F48", "F84")
 ps<- subset_samples(ps, SampleID %ni% mixedup)
 ```
 
-```{r ra_colors}
-ap<- c("#F1B6A1", "#D4A52A", "#E3E5DB", "#A5CFCC", "#0E899F", "#A83860", "#ED91BC", "#DB5339", "#F58851", "#42465C", "#1E479A", "#F7CDA4", "#CF529C", "#11638C")
+*remove metazoan ASVs and seq not classified at the kindom level*
+```{r}
+ps<-subset_taxa(ps, D1 != "")
+ps<-subset_taxa(ps, D1 != "NA")
+ps<-subset_taxa(ps, D2 != "Metazoa")
 ```
 
 * compute CLR normalization, CLR = centered log-ratio, log(x/gx) where gx is the geomentric mean of vector x
 
-### Full Community
+### Full Protist Community
 
 ```{r CLR_transform, message = FALSE, warning = FALSE}
 library("CoDaSeq")
@@ -283,7 +299,7 @@ psCLR <- phyloseq(OTU2,TAX,META2)
 ```{r AitchinsonPCoA_Full, warning = FALSE, message = FALSE }
 ordu = ordinate(psCLR, "PCoA", "euclidean")
 p_full<-plot_ordination(psCLR, ordu, color="Depth", shape="filter")+theme_bw() +scale_color_manual(values=c(ap[8], ap[12], ap[5], ap[4])) + scale_shape_discrete(labels=c( "0.2", "10.0")) +
-geom_point(size=3) +theme(text = element_text(size=16)) + ggtitle("A. Full Communities")
+geom_point(size=3) +theme(text = element_text(size=16)) + ggtitle("A. Full Protist Communities")
 p_full
 ```
 
@@ -304,7 +320,9 @@ adonis2(vegdist(OTUsSurf, method = "euclidean") ~ filter, data = metaSurf)
 
 ```{r pcoa_full_surface}
 ordu = ordinate(physeqSurf, "PCoA", "euclidean")
-pSurf_full<-plot_ordination(physeqSurf, ordu, color = "Depth",  shape="filter")+theme_bw() +scale_color_manual(values = c(ap[4]))+ geom_point(size=2) +theme(text = element_text(size=16)) +scale_shape_discrete(labels=c( "0.2", "10.0"))
+pSurf_full<-plot_ordination(physeqSurf, ordu, color = "filter")+theme_bw() +scale_color_manual(values = c("darkgrey", Cv[5] ))+ geom_point(size=2) +theme(text = element_text(size=16)) #+ geom_vline(xintercept=0, linetype="dashed", color = "black")
+
+pSurf_full
 ```
 
 **SCM**
@@ -317,7 +335,9 @@ adonis2(vegdist(OTUsSCM, method = "euclidean") ~ filter, data = metaSCM)
 
 ```{r pcoa_full_SCM}
 ordu = ordinate(physeqSCM, "PCoA", "euclidean")
-pSCM_full<-plot_ordination(physeqSCM, ordu, color = "Depth",  shape="filter")+theme_bw() +scale_color_manual(values = c(ap[5]))+ geom_point(size=2) +theme(text = element_text(size=16)) +scale_shape_discrete(labels=c( "0.2", "10.0"))
+pSCM_full<-plot_ordination(physeqSCM, ordu, color = "filter")+theme_bw() +scale_color_manual(values = c("darkgrey", Cv[5] ))+ geom_point(size=2) +theme(text = element_text(size=16))# + geom_vline(xintercept=0, linetype="dashed", color = "black")
+
+pSCM_full
 ```
 
 **Mid**
@@ -330,7 +350,10 @@ adonis2(vegdist(OTUsMid, method = "euclidean") ~ filter, data = metaMid)
 
 ```{r pcoa_full_mid}
 ordu = ordinate(physeqMid, "PCoA", "euclidean")
-pMid_full<-plot_ordination(physeqMid, ordu, color = "Depth",  shape="filter")+theme_bw() +scale_color_manual(values = c(ap[12]))+ geom_point(size=2) +theme(text = element_text(size=16)) +scale_shape_discrete(labels=c( "0.2", "10.0"))
+pMid_full<-plot_ordination(physeqMid, ordu, color = "filter")+theme_bw() +scale_color_manual(values = c("darkgrey", Cv[5] ))+ geom_point(size=2) +theme(text = element_text(size=16)) #+ geom_hline(yintercept=0, linetype="dashed", color = "black")
+
+pMid_full
+
 ```
 
 **Bottom**
@@ -343,12 +366,13 @@ adonis2(vegdist(OTUsBot, method = "euclidean") ~ filter, data = metaBot)
 
 ```{r pcoa_full_bottom}
 ordu = ordinate(physeqBot, "PCoA", "euclidean")
-pBot_full<-plot_ordination(physeqBot, ordu, color = "Depth",  shape="filter")+theme_bw() +scale_color_manual(values = c(ap[8]))+ geom_point(size=2) +theme(text = element_text(size=16)) +scale_shape_discrete(labels=c( "0.2", "10.0"))
+pBot_full<-plot_ordination(physeqBot, ordu, color = "filter")+theme_bw() +scale_color_manual(values = c("darkgrey", Cv[5] ))+ geom_point(size=2) +theme(text = element_text(size=16)) 
+pBot_full
 ```
 
 ```{r pcoa_full_bydepth, warning = FALSE, message = FALSE}
 supp1<-ggarrange(pSurf_full, pSCM_full, pMid_full, pBot_full, common.legend = TRUE, legend = "none")
-supp1
+#supp1
 ```
 
 ### Acantharian Communities
@@ -386,7 +410,9 @@ adonis2(vegdist(OTUsSurf, method = "euclidean") ~ filter, data = metaSurf)
 
 ```{r pcoa_acanth_surf}
 ordu = ordinate(physeqSurf, "PCoA", "euclidean")
-pSurf_As<-plot_ordination(physeqSurf, ordu, color = "Depth",  shape="filter")+theme_bw() +scale_color_manual(values = c(ap[4]))+ geom_point(size=2) +theme(text = element_text(size=16)) +scale_shape_discrete(labels=c( "0.2", "10.0"))
+pSurf_As<-plot_ordination(physeqSurf, ordu, color = "filter")+theme_bw() +scale_color_manual(values =  c("darkgrey", Cv[5] ))+ geom_point(size=2) +theme(text = element_text(size=16))
+
+pSurf_As
 ```
 
 **SCM**
@@ -399,7 +425,9 @@ adonis2(vegdist(OTUsSCM, method = "euclidean") ~ filter, data = metaSCM)
 
 ```{r pcoa_Acanth_SCM}
 ordu = ordinate(physeqSCM, "PCoA", "euclidean")
-pSCM_As<-plot_ordination(physeqSCM, ordu, color = "Depth",  shape="filter")+theme_bw() +scale_color_manual(values = c(ap[5]))+ geom_point(size=2) +theme(text = element_text(size=16)) +scale_shape_discrete(labels=c( "0.2", "10.0"))
+pSCM_As<-plot_ordination(physeqSCM, ordu, color ="filter")+theme_bw() +scale_color_manual(values =  c("darkgrey", Cv[5] ))+ geom_point(size=2) +theme(text = element_text(size=16)) 
+
+pSCM_As
 ```
 
 **Mid**
@@ -412,7 +440,9 @@ adonis2(vegdist(OTUsMid, method = "euclidean") ~ filter, data = metaMid)
 
 ```{r pcoa_acanth_mid}
 ordu = ordinate(physeqMid, "PCoA", "euclidean")
-pMid_As<-plot_ordination(physeqMid, ordu, color = "Depth",  shape="filter")+theme_bw() +scale_color_manual(values = c(ap[12]))+ geom_point(size=2) +theme(text = element_text(size=16)) +scale_shape_discrete(labels=c( "0.2", "10.0"))
+pMid_As<-plot_ordination(physeqMid, ordu, color = "filter")+theme_bw() +scale_color_manual(values =  c("darkgrey", Cv[5] ))+ geom_point(size=2) +theme(text = element_text(size=16)) 
+
+pMid_As
 ```
 
 **Bottom**
@@ -425,18 +455,20 @@ adonis2(vegdist(OTUsBot, method = "euclidean") ~ filter, data = metaBot)
 
 ```{r pcoa_acanth_bottom}
 ordu = ordinate(physeqBot, "PCoA", "euclidean")
-pBot_As<-plot_ordination(physeqBot, ordu, color = "Depth",  shape="filter")+theme_bw() +scale_color_manual(values = c(ap[8]))+ geom_point(size=2) +theme(text = element_text(size=16)) +scale_shape_discrete(labels=c( "0.2", "10.0"))
+pBot_As<-plot_ordination(physeqBot, ordu, color = "filter")+theme_bw() +scale_color_manual(values =  c("darkgrey", Cv[5] ))+ geom_point(size=2) +theme(text = element_text(size=16))
+
+pBot_As
 ```
 
 ```{r pcoa_acanth_bydepth, warning = FALSE, message = FALSE}
 supp_As<-ggarrange(pSurf_As, pSCM_As, pMid_As, pBot_As, common.legend = TRUE, legend = "none")
-supp_As
+#supp_As
 ```
 
 
 ```{r pcoas_AandB_full_acanth, warning = FALSE, message = FALSE}
 supp2<-ggarrange(p_full, p_Acanth, common.legend = TRUE, legend = "bottom")
-supp2
+#supp2
 ```
 
 ## Relative Abundance Plot
@@ -456,6 +488,10 @@ metatable<- metatable[,-which(names(metatable) == "SampleID")]
 META<- sample_data(metatable)
 
 ps<- subset_samples(ps, SampleID %ni% mixedup)
+ps<-subset_taxa(ps, D1 != "")
+ps<-subset_taxa(ps, D1 != "NA")
+ps<-subset_taxa(ps, D2 != "Metazoa")
+
 ps2<- ps
 sample_data(ps2) <- META
 ```
@@ -482,7 +518,7 @@ sample_data(mergedps)<-META
 ```
 
 Create phyloseq object with acantharian ASVs only:
-```{r filter_mergedtable}
+```{r filter_mergedtableD3}
 phA<-subset_taxa(mergedps, D3 =="Acantharea") 
 phAra<- transform_sample_counts(phA, function(OTU) 100* OTU/sum(OTU))
 print(phAra)
@@ -490,11 +526,6 @@ print(phAra)
 
 Relative abundance plot:
 ```{r relabund_plot}
-Dj<- wes_palette("Darjeeling2")
-Cv <- wes_palette("Cavalcanti1")
-Gb<- wes_palette("GrandBudapest1")
-wpcolor<- c(Dj[2], Dj[4], Cv[2], Cv[4], Gb[2], Cv[5])
-
 taxabarplot<-plot_bar(phAra, x= "Station_f", fill = "D4", facet_grid=filter~Depth_f) + scale_y_continuous(expand = c(0, 0)) + ggtitle("") + scale_fill_manual(values=wpcolor) + theme(legend.title=element_blank()) + geom_bar(aes( fill=D4), stat="identity", position="stack") + theme(axis.text.x = element_text(angle = 90, hjust = 1)) +theme_classic() +theme(text = element_text(size=14)) +ylab("Relative Abundance (%)") + xlab ("Station")
 
 t2<-taxabarplot + theme(legend.position="bottom")
@@ -527,7 +558,7 @@ wpcolor<- c(Dj[2], Dj[4], Cv[2], Cv[4], Cv[5], Gb[2])
 
 a_ra$D4<- factor(a_ra$D4, levels= c("Acantharea_X", "Acantharea-Group-I", "Acantharea-Group-II" , "Acantharea-Group-VI" , "Chaunacanthida", "Arthracanthida-Symphyacanthida" ))
 
-a_ra$Station <- factor(a_ra$Station, levels=c("11", "10", "9", "8", "3", "4", "2", "5", "12", "13", "14", "15", "17", "18"))
+a_ra$Station <- factor(a_ra$Station, levels=c("11", "10", "3", "9","4", "8", "2", "5", "12", "14", "15", "13", "17", "18"))
 
 t2<-ggplot(a_ra, aes(x=Station, y=Abundance, fill=D4, )) + geom_bar(stat = "identity") +facet_grid(filter~Depth_f)+ scale_y_continuous(expand = c(0, 0)) +theme_classic() + scale_fill_manual(values=wpcolor) +theme(text = element_text(size=14)) +ylab("Relative Abundance (%)") + xlab ("Station")
 
@@ -535,28 +566,104 @@ t2<-t2 + theme(legend.position="bottom")
 t2
 ```
 
+
 ```{r saveNewRAplot}
-#ggsave("/Users/brisbin/Desktop/MiraiDPI/Acantharea_TaxaBarPlot.pdf", width = 11, height =6)
+#ggsave("/Users/brisbin/Desktop/MiraiDPI/Acantharea_TaxaBarPlot_RO.pdf", width = 11, height =6)
 ```
 
+**Take a closer look at the Chaunacanthida & Arthracanthida/Symphycanthida relative abundance comapared to eachother**
 
-## ASV ordination plots
-```{r depth_taxa_asv_ordu}
-GP.ord <- ordinate(phAra, "NMDS", "bray")
-p4 = plot_ordination(phAra, GP.ord, type="split", color="Depth", shape="filter", label="Station", title="split") 
-p4
+
+```{r filter_mergedtableD4}
+phA<-subset_taxa(mergedps, D4 %in% c("Arthracanthida-Symphyacanthida", "Chaunacanthida") ) 
+phAra<- transform_sample_counts(phA, function(OTU) 100* OTU/sum(OTU))
+
+a_ra <- psmelt(phAra)
+
+t3<-plot_bar(phAra, x= "Station_f", fill = "D4", facet_grid=filter~Depth_f) + scale_y_continuous(expand = c(0, 0)) + ggtitle("") + scale_fill_manual(values=c(wpcolor[6],wpcolor[5])) + theme(legend.title=element_blank()) + geom_bar(aes( fill=D4), stat="identity", position="stack") + theme(axis.text.x = element_text(angle = 90, hjust = 1)) +theme_classic() +theme(text = element_text(size=14)) +ylab("Relative Abundance (%)") + xlab ("Station")
+
+t3<-t3 + theme(legend.position="bottom")
+t3
 ```
 
-When only Acantharian ASVs are included in the ordination, the separation between SCM and surface is more clear. The bottom and mid water samples also separate more than in the full communities.
+a 10.0 filter and a 0.2 filter in mid-water has only Chaunacanthida, but station 3 only has arth/symph in 0.2 filter from bottom water
 
-```{r asv_ordu_D4}
-p1 = plot_ordination(phAra, GP.ord, type="taxa", color="D4", title="taxa") +scale_color_manual(values=colors)
-p1 + facet_wrap(~D4, 3)
+overall - does not seem to be a pattern as to whether C or A/S is more abundant in the deeper samples
+
+**Relative abundance of Arthracanthida/Symphyacanthida seqs**
+
+```{r filter_mergedtable}
+phA<-subset_taxa(mergedps, D4 == "Arthracanthida-Symphyacanthida" ) 
+
+oOTUs <- data.frame(otu_table(phA))
+
+phAra<- transform_sample_counts(phA, function(OTU) 100* OTU/sum(OTU))
+
+a_ra <- psmelt(phAra)
+
+t3<-plot_bar(phAra, x= "Station_f", fill = "D6", facet_grid=filter~Depth_f) + scale_y_continuous(expand = c(0, 0)) + ggtitle("") + theme(legend.title=element_blank()) + geom_bar(aes( fill=D6), stat="identity", position="stack") + theme(axis.text.x = element_text(angle = 90, hjust = 1)) +theme_classic() +theme(text = element_text(size=14)) +ylab("Relative Abundance (%)") + xlab ("Station")
+
+t3<-t3 + theme(legend.position="bottom")
+t3
 ```
 
-Acantharea-group-1 is the only group with a clear pattern: primarily present in deep/mid cluster and completely absent in the surface.
+Really interesting pattern in the sequences classified to genus level: 
 
-## Station relative abundance scatter plots (for comparison with imaging results)
+* Acanthostaurs seems to be more abundant in surface and SCM, but present primarily in smaller fractions in deeper samples
+* Phyllostaurus seems to be only present in deeper samples, on both filters, but mostly on the larger filter. 
+
+* Most of the ASVs are not classified to genus level (yellow and grey)
+
+
+
+## Are individual Arth-Symph ASVs present in all depth layers?
+
+Merge by depth:
+Merge:
+```{r merge_samples_ps_Depth}
+mergedpsD <- merge_samples(phA, "Depth")
+print(mergedpsD)
+```
+*number of samples reduced from 211 to 4*
+
+
+```{r bubbleplot}
+a_ra <- psmelt(mergedpsD)
+
+a_ra1<- a_ra %>% filter(Abundance > 0) %>%  mutate(D6= na_if(D6, "Arthracanthida-Symphyacanthida_XX"))
+
+a_ra1$D6 <- as.character(a_ra1$D6)
+a_ra2 <- a_ra1 %>% replace_na(list(D6 = "XXXX")) %>% arrange(D6)
+
+
+#reverse!
+a_ra2$OTU <- factor(a_ra2$OTU, levels = rev(unique(a_ra2$OTU )))
+
+#change x axis order
+
+bubble_plot <- ggplot(a_ra2,aes(Sample, OTU)) +
+    geom_point(aes(size=Abundance, fill=D6),shape=21,color="black") +
+    theme(panel.grid.major=element_line(linetype=1,color="grey"),
+          axis.text.x=element_text(angle=90,hjust=1,vjust=0),
+          panel.background = element_blank()) +
+    ylab("ASVs") +
+    xlab("Depth") +
+    scale_fill_brewer(palette="Paired", name="Genus") +
+    scale_size(name = "Read\ncounts")+ theme(axis.text.y=element_blank())
+
+bubble_plot
+```
+
+Yes! 32 out of 224 individual Arth/Symph ASVs are present in surface/SCM and mid/bottom. 
+
+The more abundant ASVs were often found in deep and shallow samples. 
+
+This makes sense ... if they are more abundant, it is more likely that they are caught in multiple 5 L samples.
+
+Looking at the graph - only Phyllostaurus seems to be predominantly in aphotic zone despite having high abundance (although 3 ASVs also in shallow samples)
+
+
+## Acantharian Sequence Percentage scatter plots (for comparison with imaging results)
 
 ### All Acantharians
 
@@ -576,6 +683,10 @@ ps = merge_phyloseq(phyloseq, TAX, META_all)
 
 ps<- subset_samples(ps, SampleID %ni% mixedup)
 
+ps<-subset_taxa(ps, D1 != "")
+ps<-subset_taxa(ps, D1 != "NA")
+ps<-subset_taxa(ps, D2 != "Metazoa")
+
 psD3 = tax_glom(ps, "D3")
 psD3ra <- transform_sample_counts(psD3, function(OTU) 100* OTU/sum(OTU))
 psD3ra_Aonly<- subset_taxa(psD3ra, D3 =="Acantharea") 
@@ -587,59 +698,65 @@ row.names(metatable_percent_plot) <- gsub("-", ".", row.names(metatable_percent_
 psD3ra_Aonly_10_otus_meta <- merge(psD3ra_Aonly_10_otus, metatable_percent_plot, by = "row.names")
 ```
 
-```{r all_stations_percentplot}
-percent_depth <- ggplot(psD3ra_Aonly_10_otus_meta, aes(x=m, y = acanth)) + geom_point() + theme_bw() +theme(text = element_text(size=12)) + xlab("Depth (m)") +ylab("% Acantharian Reads") +ggtitle("A.") +
-  geom_smooth(method=lm, color = "#11638C")
-```
-
-```{r percent_depth_faceted}
-percent_DPIstations<- psD3ra_Aonly_10_otus_meta[psD3ra_Aonly_10_otus_meta$Station %in% c("10", "3", "15", "17"),]
-
-percent_DPIstations$Station <- factor(percent_DPIstations$Station, levels = c("10", "3", "15", "17"))
-
-stat.labs <- c("st. 10", "st. 3", "st. 15", "st. 17" )
-names(stat.labs) <- c("10", "3", "15", "17")
-
-percent_depth_all_faceted <- ggplot(percent_DPIstations, aes(x=m, y = acanth)) + geom_point() + theme_bw() +theme(text = element_text(size=12)) + xlab("Depth (m)") +ylab("% Acantharian Reads") +ggtitle("A.") +
-  geom_smooth(method=lm, color = "#11638C") + facet_grid( ~Station,labeller =  labeller(Station = stat.labs)) +ggtitle("B.")+ theme(strip.background = element_rect(colour='black', fill='white')) + theme(axis.text.x = element_text(angle = 315))
-```
-
-```{r percent_depth_plots_AB}
-ggarrange(percent_depth, percent_depth_all_faceted, nrow =2 )
-#ggsave("/Users/brisbin/Desktop/MiraiDPI/percentabundance_lms.png")
-```
-
-```{r all_stations_lm}
+**check to see if linear regression assumptions are met:**
+```{r all_stations_lm_normalCheck}
 depthLM <- lm(acanth ~ m, data = psD3ra_Aonly_10_otus_meta)
-summary(depthLM)
+par(mfrow = c(2, 2))
+plot(depthLM)
+```
+
+*Residuals are not normally distributed*
+
+Homoscedasticity doesn't look terrible, but..
+```{r}
+# Evaluate homoscedasticity
+# non-constant error variance test
+ncvTest(depthLM)
+```
+*Not homoscedastic*
+
+
+--> use local curve fitting (loess)
+
+```{r all_stations_percentplot}
+percent_depth <- ggplot(psD3ra_Aonly_10_otus_meta, aes(x=m, y = acanth)) + geom_point() + theme_bw() +theme(text = element_text(size=19)) + xlab("Depth (m)") +ylab("% Acantharian Sequences") +ggtitle("A.") +
+  geom_smooth(span =1, color = "#11638C") + theme(panel.grid.major = element_blank(),
+panel.grid.minor = element_blank())
+percent_depth 
+```
+
+
+**Correlation Coefficient**
+
+Check if data are normally distributed (if normally distributed, use parametric Pearson coefficient; if not, use non-paranetric Spearman coefficient)
+
+```{r}
+ggdensity(psD3ra_Aonly_10_otus_meta$acanth, 
+          main = "Density plot of acanth percentage",
+          xlab = "acanth percentage")
+```
+```{r}
+ggqqplot(psD3ra_Aonly_10_otus_meta$acanth)
+```
+
+```{r}
+shapiro.test(psD3ra_Aonly_10_otus_meta$acanth)
+```
+
+if p-value > 0.05 data are normally distributed
+
+this p value indicates that the data distribution is significantly different than normal distribution
+
+assumptions for Pearsons (parametric) - both values are normally distributed, linearity, and homoscedasticity, no outliers 
+
+Spearman does not require normally distributed data (non-parametric) --> Use Spearman
+```{r}
+df_for_corr <- psD3ra_Aonly_10_otus_meta %>% dplyr::select(acanth, m)
+rcorr(as.matrix(df_for_corr), type = "spearman")
 ```
 
 Percent contribution of acantharians to the full community is significantly positively correlated to depth (increased % with increased depth). 
 
-By station:
-station 10
-```{r percentLM_10}
-depthLM10 <- lm(acanth ~ m, data = psD3ra_Aonly_10_otus_meta[psD3ra_Aonly_10_otus_meta$Station == "10",])
-summary(depthLM10)
-```
-
-station 15
-```{r percentLM_15}
-depthLM15 <- lm(acanth ~ m, data = psD3ra_Aonly_10_otus_meta[psD3ra_Aonly_10_otus_meta$Station == "15",])
-summary(depthLM15)
-```
-station 17
-```{r percentLM_17}
-depthLM17 <- lm(acanth ~ m, data = psD3ra_Aonly_10_otus_meta[psD3ra_Aonly_10_otus_meta$Station == "17",])
-summary(depthLM17)
-```
-station 3
-```{r percentLM_3}
-depthLM3 <- lm(acanth ~ m, data = psD3ra_Aonly_10_otus_meta[psD3ra_Aonly_10_otus_meta$Station == "3",])
-summary(depthLM3)
-```
-
-Individual station linear model is only significant for station 17. 
 
 ### Only photosymbiotic acantharian clades
 
@@ -655,76 +772,81 @@ row.names(metatable_percent_plot) <- gsub("-", ".", row.names(metatable_percent_
 psD4ra_Aonly_10_otus_meta <- merge(psD4ra_Aonly_10_otus, metatable_percent_plot, by = "row.names")
 ```
 
-```{r percentplot_photosym_allstations}
-percent_depth <- ggplot(psD4ra_Aonly_10_otus_meta, aes(x=m, y = acanth)) + geom_point() + theme_bw() +theme(text = element_text(size=12)) + xlab("Depth (m)") +ylab("% Arthracanthida-Symphyacanthida-Chaunacanthida") +ggtitle("A.") +
-  geom_smooth(method=lm, color = Cv[5]) +theme( axis.title.y = element_text(size = 10))
-```
-
-```{r percentplot_photosym_photostations}
-percent_DPIstations<- psD4ra_Aonly_10_otus_meta[psD3ra_Aonly_10_otus_meta$Station %in% c("10", "3", "15", "17"),]
-
-percent_DPIstations$Station <- factor(percent_DPIstations$Station, levels = c("10", "3", "15", "17"))
-
-stat.labs <- c("st. 10", "st. 3", "st. 15", "st. 17" )
-names(stat.labs) <- c("10", "3", "15", "17")
-
-percent_depth_all_faceted <- ggplot(percent_DPIstations, aes(x=m, y = acanth)) + geom_point() + theme_bw() +theme(text = element_text(size=12)) + xlab("Depth (m)") +ylab("% Arthracanthida-Symphyacanthida-Chaunacanthida") +
-  geom_smooth(method=lm, color = Cv[5]) + facet_grid( ~Station,labeller =  labeller(Station = stat.labs)) +ggtitle("B.")+ theme(strip.background = element_rect(colour='black', fill='white')) + theme(axis.text.x = element_text(angle = 315), axis.title.y = element_text(size = 10))
-```
-
-```{r percent_photo_plot, warning = FALSE}
-ggarrange(percent_depth, percent_depth_all_faceted, nrow =2 )
-#ggsave("/Users/brisbin/Desktop/MiraiDPI/percentabundance_ASC_lms.png")
-```
-
-```{r lm_photosym_allstations}
+**check to see if linear regression assumptions are met:**
+```{r all_stations_lm}
 depthLM <- lm(acanth ~ m, data = psD4ra_Aonly_10_otus_meta)
-summary(depthLM)
+par(mfrow = c(2, 2))
+plot(depthLM)
+```
+*Residuals are not normally distributed*
+
+doesn't look homoscedastic ...
+```{r}
+# Evaluate homoscedasticity
+# non-constant error variance test
+ncvTest(depthLM)
+```
+*Not homoscedastic*
+
+--> use local curve fitting (loess)
+
+```{r percentplot_photosym_allstations}
+percent_depth_photo <- ggplot(psD4ra_Aonly_10_otus_meta, aes(x=m, y = acanth)) + geom_point() + theme_bw() +theme(text = element_text(size=19)) + xlab("Depth (m)") +ylab("% Arthracanthida-Symphyacanthida-Chaunacanthida") +ggtitle("B.") +
+  geom_smooth(span =1, color = Cv[5]) + theme(panel.grid.major = element_blank(),
+panel.grid.minor = element_blank())
+
+percent_depth_photo
+```
+
+
+**Correlation Coefficient**
+
+Check if data are normally distributed (if normally distributed, use parametric Pearson coefficient; if not, use non-paranetric Spearman coefficient)
+
+```{r ASC_densityplot}
+ggdensity(psD4ra_Aonly_10_otus_meta$acanth, 
+          main = "Density plot of acanth percentage",
+          xlab = "acanth percentage")
+```
+
+```{r ASC_QQplot}
+ggqqplot(psD4ra_Aonly_10_otus_meta$acanth)
+```
+
+```{r ASC_normal_check}
+shapiro.test(psD4ra_Aonly_10_otus_meta$acanth)
+```
+
+NOT normal --> use Spearman correlation coefficient
+
+```{r ASC_corr_coef}
+dffor_corr <- psD4ra_Aonly_10_otus_meta %>% dplyr::select(acanth, m)
+rcorr(as.matrix(dffor_corr), type = "spearman")
 ```
 
 Percent contribution of photosymbiotic acantharians to the full community is significantly *negatively* correlated to depth (decreased % with increased depth). 
 
-By station:
-station 10
-```{r percent_photo_LM_10}
-depthLM10 <- lm(acanth ~ m, data = psD4ra_Aonly_10_otus_meta[psD4ra_Aonly_10_otus_meta$Station == "10",])
-summary(depthLM10)
+```{r, message=FALSE}
+ggarrange(percent_depth, percent_depth_photo)
+#ggsave("loess_figs1.png", width = 14, height = 7)
 ```
 
-station 15
-```{r percent_photo_LM_15}
-depthLM15 <- lm(acanth ~ m, data = psD4ra_Aonly_10_otus_meta[psD4ra_Aonly_10_otus_meta$Station == "15",])
-summary(depthLM15)
-```
-
-station 17
-```{r percent_photo_LM_17}
-depthLM17 <- lm(acanth ~ m, data = psD4ra_Aonly_10_otus_meta[psD4ra_Aonly_10_otus_meta$Station == "17",])
-summary(depthLM17)
-```
-
-station 3
-```{r percent_photo_LM_3}
-depthLM3 <- lm(acanth ~ m, data = psD4ra_Aonly_10_otus_meta[psD4ra_Aonly_10_otus_meta$Station == "3",])
-summary(depthLM3)
-```
-
-Individual station linear model is only significant for station 10. 
 
 # High-throughput imaging analysis
 
 Acantharian ROIs and full raw images are archived on Zenodo (doi: 10.5281/zenodo.3605400).
 
 Load additional packages:
-```{r load_more_packages, warning=FALSE}
+```{r load_more_packages, message=FALSE}
 library(readr)
 library(reshape2)
-library("plyr", lib.loc="/Library/Frameworks/R.framework/Versions/3.4/Resources/library")
+#library("plyr", lib.loc="/Library/Frameworks/R.framework/Versions/3.4/Resources/library")
 ```
 
 ## Acantharian abundance by depth
 
 **Station 17**
+
 Load and format CTD data:
 ```{r st17ctd_load}
 ctd17 <- read.csv("~/Desktop/MiraiDPI/DPI_CTD_data/6KCDT0006/CTD/6KCDT0006_CTD_data_1sec_int.csv")
@@ -796,7 +918,7 @@ Divide the acantharian frequency by photo frequency and convert to cells/L.
 
 For stations 3 and 10 the camera and led were 15.4cm apart. For stations 15 and 17, the camera and LED were 14 cm apart. 
 
-5.5 x 4.6 x 15.4 = 389.62 cubic cm = 0.38962 L at stations 3 & 10
+5.5 x 4.6 x 15.4 = 389.62 cubic cm = 0.38962 L at stations 3 & 10                 
 5.5 x 4.6 x 14 = 354.2 cubic cm = 0.3542 L at stations 15 & 17
 
 station 17 volume calculation: 
@@ -885,6 +1007,7 @@ frequencyDF3$Station <- "st.3"
 ```
 
 **Station 10**
+
 Load and format CTD data:
 ```{r st10_loadCTD}
 ctd10 <- read.csv("~/Desktop/MiraiDPI/DPI_CTD_data/6KCDT0004/CTD/6KCDT0004_CTD_data_1sec_int.csv")
@@ -1025,85 +1148,92 @@ frequencyDF15$conc <- frequencyDF15$Acanthfrequency / frequencyDF15$photofrequen
 frequencyDF15$perLiter <- frequencyDF15$conc / 0.3542
 frequencyDF15$pos_depth <- frequencyDF15$depth * -1
 frequencyDF15$Station <- "st.15"
+
+frequencyDF_all<- rbind(frequencyDF10, frequencyDF15, frequencyDF17, frequencyDF3)
+
+frequencyDF_all$Station <- factor(frequencyDF_all$Station, levels = c("st.10", "st.3", "st.15", "st.17"))
 ```
 
+Check assumptions for linear regression:
+```{r}
+frequencyDF_all$logdepth = log(frequencyDF_all$pos_depth+1)
+frequencyDF_all$logconc =  log(frequencyDF_all$perLiter+1)
 
-rbind and plot:
-```{r plot_depth_by_conc, warning=FALSE}
+depth_conc_LM <- lm(logdepth ~ logconc, data = frequencyDF_all)
+
+par(mfrow = c(2, 2))
+plot(depth_conc_LM)
+```
+
+Residuals are normally distributed, but not homoscedastic:
+```{r}
+# Evaluate homoscedasticity
+# non-constant error variance test
+ncvTest(depth_conc_LM)
+```
+
+Use Loess and correlation coefficient:
+
+```{r, message=FALSE, warning=FALSE}
 frequencyDF_all<- rbind(frequencyDF10, frequencyDF15, frequencyDF17, frequencyDF3)
 
 frequencyDF_all$Station <- factor(frequencyDF_all$Station, levels = c("st.10", "st.3", "st.15", "st.17"))
 
-conc_depth_all <- ggplot(frequencyDF_all, aes(x=pos_depth, y = perLiter)) + geom_point() + theme_bw() +theme(text = element_text(size=12)) + xlab("Depth (m)") +ylab("Acantharian cells per Liter") +ggtitle("A.") + geom_smooth(method=lm, formula= (log(y+1) ~ log(x+1)), color = "#0E899F")
+conc_depth_all <- ggplot(frequencyDF_all, aes(x=pos_depth, y = perLiter)) + geom_point() + theme_bw() +theme(text = element_text(size=14)) + xlab("") +ylab("Imaged acantharian cells (per Liter)") +ggtitle("") + geom_smooth(color = "#0E899F")+  theme(axis.text.y = element_text(angle = 90, hjust = 1))+ theme(axis.text.x = element_text(angle = 90, hjust = 1)) + theme(panel.grid.major = element_blank(),
+panel.grid.minor = element_blank())
 
-conc_depth_all_faceted <- conc_depth_all + facet_grid(~Station) +ggtitle("B.") + theme(strip.background = element_rect(colour='black', fill='white'))
-
-ggarrange(conc_depth_all, conc_depth_all_faceted, nrow =2 )
-#ggsave("~/desktop/MiraiDPI/conc_by_depth.png")
+conc_depth_all
 ```
-
 
 maximum concentration and depth at each station:
 ```{r max_concs}
 frequencyDF_all %>% dplyr::select(perLiter, depth, Station) %>% group_by(Station) %>% top_n(n=1, wt = perLiter) %>% arrange(Station)
 ```
 
-Linear model for all 4 stations:
-```{r freqLM}
-depth_conc_LM <- lm(log(perLiter+1) ~ log(pos_depth+1), data = frequencyDF_all)
-summary(depth_conc_LM)
+
+Data are not normally distributed:
+
+```{r}
+ggqqplot(frequencyDF_all$perLiter)
 ```
 
-station 10
-```{r freqLM_st10}
-depth_conc_LM10 <- lm(log(perLiter+1) ~ log(pos_depth+1), data = frequencyDF10) 
-summary(depth_conc_LM10)
+```{r}
+shapiro.test(frequencyDF_all$perLiter)
 ```
 
-station 15
-```{r freqLM_st15}
-depth_conc_LM15 <- lm(log(perLiter+1) ~ log(pos_depth+1), data = frequencyDF15)
-summary(depth_conc_LM15)
+Use Spearman Correlation Coefficient:
+```{r}
+df_for_corr <- frequencyDF_all %>% dplyr::select(perLiter, pos_depth)
+rcorr(as.matrix(df_for_corr), type = "spearman")
 ```
 
-station 17
-```{r freqLM_st17}
-depth_conc_LM17 <- lm(log(perLiter+1) ~ log(pos_depth+1), data = frequencyDF17)
-summary(depth_conc_LM17)
-```
+Cell concentration is significantly negatively correlated with depth
 
-station 3
-```{r freqLM_st3}
-depth_conc_LM3 <- lm(log(perLiter+1) ~ log(pos_depth+1), data = frequencyDF3)
-summary(depth_conc_LM3)
-```
-
-## correlation between image conc and sequence % abundance
+## Correlation between image conc and sequence % abundance
 
 ```{r freqbylayer_surf}
-frequencyDF_surf <- frequencyDF_all%>% group_by(Station) %>% dplyr::select(pos_depth, perLiter) %>% filter(pos_depth < 50) %>% filter(!is.na(perLiter)) %>% summarize(Conc= mean(perLiter))
+frequencyDF_surf <- frequencyDF_all %>% dplyr::filter(pos_depth < 50) %>% dplyr::filter(!is.na(perLiter)) %>% dplyr::group_by(Station)%>% dplyr::summarize(Conc= mean(perLiter)) 
 frequencyDF_surf$Depth<- "Surface"
 ```
 
 ```{r freqbylayer_SCM}
-frequencyDF_SCM <- frequencyDF_all%>% group_by(Station) %>% dplyr::select(pos_depth, perLiter) %>% filter(pos_depth > 50 & pos_depth < 150) %>% filter(!is.na(perLiter)) %>% summarize(Conc= mean(perLiter))
+frequencyDF_SCM <- frequencyDF_all %>% dplyr::filter(pos_depth > 50 & pos_depth < 150) %>% dplyr::filter(!is.na(perLiter)) %>% dplyr::group_by(Station) %>% dplyr::summarize(Conc= mean(perLiter))
 frequencyDF_SCM$Depth <-"SCM"
 ```
 
 ```{r freqbylayer_mid}
-frequencyDF_Mid <- frequencyDF_all%>% group_by(Station) %>% dplyr::select(pos_depth, perLiter) %>% filter(pos_depth > 150 & pos_depth < 700) %>% filter(!is.na(perLiter)) %>% summarize(Conc= mean(perLiter))
+frequencyDF_Mid <- frequencyDF_all %>% dplyr::filter(pos_depth > 150 & pos_depth < 700) %>% dplyr::filter(!is.na(perLiter))%>% dplyr::group_by(Station) %>% dplyr::summarize(Conc= mean(perLiter))
 frequencyDF_Mid$Depth <- "Mid"
 ```
 
 ```{r freqbylayer_bottom}
-frequencyDF_Bot<- frequencyDF_all%>% group_by(Station) %>% dplyr::select(pos_depth, perLiter) %>% filter(pos_depth > 700) %>% filter(!is.na(perLiter)) %>% summarize(Conc= mean(perLiter))
+frequencyDF_Bot<- frequencyDF_all%>% dplyr::filter(pos_depth > 700) %>% dplyr::filter(!is.na(perLiter)) %>% dplyr::group_by(Station) %>%  dplyr::summarize(Conc= mean(perLiter))
 frequencyDF_Bot$Depth <- "Bottom"
 ```
 
 ```{r freqbylayer_rbind}
 frequencyBYlayer<-rbind(frequencyDF_surf, frequencyDF_SCM, frequencyDF_Mid, frequencyDF_Bot)
 ```
-
 
 `mergedps` merged replicates so there is one sample per combination of variables
 ```{r get_seq_vals}
@@ -1138,30 +1268,66 @@ final <- merge(DPIstations, frequencyBYlayer)
 ```
 
 plot count by percent
-```{r plot_count_by_percent}
-countBYperc <- ggplot(final, aes(x=Conc, y = acanth)) + geom_point() + theme_bw() +theme(text = element_text(size=12)) + xlab("cells per L") +ylab("% Arthracanthida-Symphyacanthida-Chaunacanthida") +
-  geom_smooth(method=lm, color = Cv[5]) +theme( axis.title.y = element_text(size = 10))
-countBYperc
-```
-
-```{r countbypercent_LM}
-cBYp <- lm(acanth ~ Conc, data = final)
-summary(cBYp)
-```
 
 ```{r countbypercent_nooutliers}
-final2 <- final %>% filter(Conc < 2 & acanth < 5) 
+final2 <- final %>% filter(Conc < 2 & acanth < 5) # remove two outliers
 
-countBYperc2 <- ggplot(final2, aes(x=Conc, y = acanth)) + geom_point() + theme_bw() +theme(text = element_text(size=12)) + xlab("cells per L") +ylab("% Arthracanthida-Symphyacanthida-Chaunacanthida") +
-  geom_smooth(method=lm, color = Cv[5]) +theme( axis.title.y = element_text(size = 10))
+countBYperc2 <- ggplot(final2, aes(x=Conc, y = acanth)) + geom_point() + theme_bw() +theme(text = element_text(size=19)) + xlab("Imaged acantharian cells (per L)") +ylab("% Chaunacanthida-Arthracanthida-Symphyacanthida Sequences") +
+  geom_smooth(method = lm, color = Cv[5]) +theme( axis.title.y = element_text(size = 17)) + theme(panel.grid.major = element_blank(),
+panel.grid.minor = element_blank())
 countBYperc2
-#ggsave("countbypercent_noO.png", width = 4, height = 4)
+
+ggsave("countbypercent_noO.png", width = 8, height = 8)
 ```
 
 ```{r count_by_percent_noO_LM}
-cBYp2 <- lm(acanth ~ Conc, data = final2)
-summary(cBYp2)
+concByperc <- lm(acanth ~ Conc, data = final2)
+
+par(mfrow = c(2, 2))
+plot(concByperc )
 ```
+
+Residuals are normally distributed
+
+```{r}
+# Evaluate homoscedasticity
+# non-constant error variance test
+ncvTest(concByperc )
+```
+Homoscedastic!
+
+```{r}
+summary(concByperc)
+```
+
+
+Data are not normally distributed:  
+```{r}
+shapiro.test(final2$acanth)
+```
+
+```{r}
+
+ggqqplot(final2$acanth)
+```
+
+```{r}
+
+shapiro.test(final2$Conc)
+```
+
+
+```{r}
+
+ggqqplot(final2$Conc)
+```
+
+Spearman Correlation: 
+```{r}
+df_for_corr <- final2 %>% dplyr::select(acanth, Conc)
+rcorr(as.matrix(df_for_corr), type = "spearman")
+```
+
 
 ## Acantharian cell size distribution by depth 
 cropped all acantharian photos to touch the edges of the acantharian spines.
@@ -1171,8 +1337,8 @@ entire image is 2448 x 2050 pixels
 5.5 cm accross (55,000 µm)
 55,000 / 2448 = 22.5
 
-
 **Station 17**
+
 Load and format data: 
 ```{r st17_imagesize}
 imagesize17 <- read.csv("~/Desktop/MiraiDPI/st17DPI/st17imagesize.csv", header = FALSE)
@@ -1192,6 +1358,7 @@ str(imagesizedepth17)
 ```
 
 **Station 3**
+
 Load and format data: 
 ```{r st3_imagesize}
 imagesize3 <- read.csv("~/Desktop/MiraiDPI/st3DPI/st3imagesize.csv", header = FALSE)
@@ -1211,6 +1378,7 @@ str(imagesizedepth3)
 ```
 
 **Station 10**
+
 Load and format data: 
 ```{r st10_imagesize}
 imagesize10 <- read.csv("~/Desktop/MiraiDPI/st10DPI/st10imagesize.csv", header = FALSE)
@@ -1230,6 +1398,7 @@ str(imagesizedepth10)
 ```
 
 **Station 15**
+
 Load and format data: 
 ```{r st15_imagesize}
 imagesize15 <- read.csv("~/Desktop/MiraiDPI/st15DPI/st15imagesize.csv", header = FALSE)
@@ -1254,16 +1423,99 @@ imagesizedepth_all$Station <- factor(imagesizedepth_all$Station, levels = c("st.
 ```
 
 ```{r size_depth_all_plot}
-depthsize_all<- ggplot(imagesizedepth_all, aes(x=pos_depth, y = size)) + geom_point() +  theme_bw() +theme(text = element_text(size=12)) + xlab("Depth (m)") +ylab(expression(Acantharian~ROI~area~(mm^2))) 
+depthsize_all<- ggplot(imagesizedepth_all, aes(x=pos_depth, y = size)) + geom_point() +  theme_bw() +theme(text = element_text(size=12)) + xlab("") +ylab(expression(Acantharian~ROI~area~(mm^2)))+ theme(axis.text.y = element_text(angle = 90, hjust = 1))+ theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
 depthsize_all
 ```
 
-```{r size_depth_facet_plot}
-depthsize_all + facet_grid(~Station) + theme(strip.background = element_rect(colour='black', fill='white'))
+```{r}
+p <-imagesizedepth_all %>% dplyr::select(pos_depth, size) %>%
+  
+  # Add a new column called 'bin': cut the depths into 10 m bins
+  mutate( bin=cut_width(pos_depth, width=10, boundary=5) ) %>%
+  
+  # plot
+  ggplot( aes(x=bin, y=size) ) +
+    geom_boxplot(fill="#69b3a2", coef=100) +
+    xlab("Depth") + theme_bw()+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+p
 ```
 
-```{r savedepthbysize}
-ggsave("/Users/brisbin/Desktop/MiraiDPI/sizebydepth.png", height = 3.5, width =7)
+but X axis is not continuous - bins with without any data are skipped
+
+
+```{r}
+library(plyr)
+
+sizemediandf <- imagesizedepth_all %>% dplyr::select(pos_depth, size)
+
+cutdataframe <- ddply(sizemediandf, .(cut(sizemediandf$pos_depth, 100)), colwise(mean))
+cut_max <- ddply(sizemediandf, .(cut(sizemediandf$pos_depth, 100)), colwise(max))
+cut_min <- ddply(sizemediandf, .(cut(sizemediandf$pos_depth, 100)), colwise(min))
+
+names(cutdataframe) <- c("Depth", "meanSize")
+names(cut_max)<- c("Depth", "maxSize")
+names(cut_min) <- c("Depth", "minSize")
+
+cut2<- merge(cutdataframe, cut_max, by =  "Depth")
+cut3<- merge(cut2, cut_min, by =  "Depth")
+
+cut3$depth1 <- substr(as.character(cut3$Depth), 2, 6)
+cut3$depth1<- as.numeric(sapply(strsplit(cut3$depth1, ","), "[", 1))
+
 ```
 
+Are linear regression assumptions met? 
+```{r}
+meanSizelm<- lm(meanSize ~ depth1, data = cut3)
+par(mfrow = c(2, 2))
+plot(meanSizelm)
+```
+Residuals are close to normally distributed (only 3 points far from straight line), looks homoscedastic 
+
+```{r}
+# Evaluate homoscedasticity
+# non-constant error variance test
+ncvTest(meanSizelm)
+```
+it is homoscedastic 
+
+according to central limit theorem, probably could use a linear regression because sample size is large (82 > 30)
+
+for consistency, will use loess and correlation coefficient: 
+
+```{r}
+depthsize_all<- ggplot(cut3, aes(x=depth1, y = meanSize)) + geom_point() +  theme_bw() +theme(text = element_text(size=14)) + xlab("") +ylab(expression(Acantharian~ROI~area~(mm^2))) +  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + geom_pointrange(aes(ymin= minSize , ymax=maxSize), alpha = 0.3)+ theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + theme(axis.text.y = element_text(angle = 90, hjust = 1)) + geom_smooth(span =1 ,color = "#0E899F") + scale_y_continuous(expand = c(0, 0))
+
+depthsize_all
+```
+```{r}
+#ggsave("size_by_depth.png", width =14, height = 7)
+```
+
+**Correlation Coefficient**
+
+is data normally distributed?
+
+```{r}
+ggqqplot(cut3$meanSize)
+```
+
+```{r}
+shapiro.test(cut3$meanSize)
+```
+
+NO ...
+
+--> use Spearman Correlation Coefficient
+
+```{r}
+df_for_corr <- cut3 %>% dplyr::select(meanSize, depth1)
+rcorr(as.matrix(df_for_corr), type = "spearman")
+```
+
+# Session Info
+```{r}
+sessionInfo()
+```
 
